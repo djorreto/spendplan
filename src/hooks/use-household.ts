@@ -176,7 +176,7 @@ export function useHousehold() {
         .from('household_memberships')
         .select(`
           *,
-          profile:profiles(*)
+          profile:profiles!user_id(*)
         `)
         .eq('household_id', householdId)
         .eq('is_active', true)
