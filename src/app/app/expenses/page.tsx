@@ -135,13 +135,11 @@ function saveDemoExpenses(expenses: Expense[]) {
   localStorage.setItem(DEMO_EXPENSES_KEY, JSON.stringify(expenses))
 }
 
-function isDemoMode(): boolean {
-  if (typeof window === 'undefined') return false
-  return !!localStorage.getItem('spendplan_demo_user')
-}
-
 export default function ExpensesPage() {
-  const { currentHousehold } = useHousehold()
+  const { currentHousehold, isDemoMode: hookIsDemoMode } = useHousehold()
+  
+  // Check if we're in demo mode - use hook state AND check household ID
+  const checkIsDemoMode = () => hookIsDemoMode && currentHousehold?.id.startsWith('demo-')
   const { user } = useAuth()
   const { addToast } = useToast()
   
@@ -183,7 +181,7 @@ export default function ExpensesPage() {
     setLoading(true)
 
     // Check demo mode first
-    if (isDemoMode()) {
+    if (checkIsDemoMode()) {
       console.log('📦 Loading demo data')
       const allCats = getAllCategories()
       setCategories(allCats)
@@ -310,7 +308,7 @@ export default function ExpensesPage() {
     }
 
     // Demo mode: save to localStorage
-    if (isDemoMode()) {
+    if (checkIsDemoMode()) {
       console.log('💾 Saving expense in demo mode')
       const demoExpenses = getDemoExpenses()
       
@@ -421,7 +419,7 @@ export default function ExpensesPage() {
     if (!confirm('¿Estás seguro de eliminar este gasto?')) return
 
     // Demo mode: delete from localStorage
-    if (isDemoMode()) {
+    if (checkIsDemoMode()) {
       const demoExpenses = getDemoExpenses()
       const filtered = demoExpenses.filter(e => e.id !== id)
       saveDemoExpenses(filtered)

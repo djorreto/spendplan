@@ -103,7 +103,8 @@ export default function DashboardPage() {
   const loadDashboardData = async () => {
     if (!currentHousehold) return
     
-    const isDemo = isDemoMode || currentHousehold.id.startsWith('demo-') || !!localStorage.getItem('spendplan_demo_user')
+    // Solo es demo si explícitamente está en modo demo Y el household es de demo
+    const isDemo = isDemoMode && currentHousehold.id.startsWith('demo-')
     
     // Calculate days in month and days passed
     const now = new Date()

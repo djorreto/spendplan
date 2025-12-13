@@ -380,8 +380,8 @@ export default function BudgetPage() {
   const [budgetItems, setBudgetItems] = useState<BudgetItem[]>([])
   const [expenses, setExpenses] = useState<Expense[]>([])
   
-  // Check if we're in demo mode
-  const isDemo = isDemoMode() || isHouseholdDemo || currentHousehold?.id?.startsWith('demo-')
+  // Check if we're in demo mode - only if hook says demo AND household is demo
+  const isDemo = isHouseholdDemo && currentHousehold?.id?.startsWith('demo-')
   
   // View state
   const [currentMonth] = useState(getCurrentMonth())
