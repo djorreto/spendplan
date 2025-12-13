@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { User, AuthError } from '@supabase/supabase-js'
 import { supabaseBrowser } from '@/lib/supabase'
 import type { Profile } from '@/types'
@@ -12,6 +12,10 @@ interface AuthState {
   error: AuthError | null
   isDemoMode: boolean
 }
+
+// Cache para evitar múltiples llamadas
+let profileCache: { [userId: string]: Profile } = {}
+let lastAuthCheck = 0
 
 // Demo mode helpers
 const DEMO_USER_KEY = 'spendplan_demo_user'
@@ -56,8 +60,14 @@ export function useAuth() {
   // Usar singleton
   const supabase = supabaseBrowser()
 
-  // Cargar perfil del usuario
+  // Cargar perfil del usuario (con cache)
   const loadProfile = useCallback(async (userId: string): Promise<Profile | null> => {
+    // Usar cache si existe
+    if (profileCache[userId]) {
+      console.log('📋 Profile from cache:', profileCache[userId].email)
+      return profileCache[userId]
+    }
+    
     console.log('📋 Loading profile for user:', userId)
     try {
       const { data, error } = await supabase
@@ -67,7 +77,7 @@ export function useAuth() {
         .single()
 
       if (error) {
-        console.error('❌ Error loading profile:', error.code, error.message, error.details)
+        console.error('❌ Error loading profile:', error.code, error.message)
         // Si el perfil no existe, intentar crearlo
         if (error.code === 'PGRST116') {
           console.log('📋 Profile not found, creating...')
@@ -90,12 +100,14 @@ export function useAuth() {
               return null
             }
             console.log('✅ Profile created:', created)
+            profileCache[userId] = created as Profile
             return created as Profile
           }
         }
         return null
       }
       console.log('✅ Profile loaded:', data?.email)
+      profileCache[userId] = data as Profile
       return data as Profile
     } catch (error) {
       console.error('❌ Exception loading profile:', error)
@@ -108,6 +120,14 @@ export function useAuth() {
     let isMounted = true
     
     const checkUser = async () => {
+      // Evitar múltiples llamadas en corto tiempo
+      const now = Date.now()
+      if (now - lastAuthCheck < 2000) {
+        console.log('📋 Skipping auth check (too soon)')
+        return
+      }
+      lastAuthCheck = now
+      
       try {
         // Primero verificar si hay usuario demo
         const demoUser = getDemoUser()
