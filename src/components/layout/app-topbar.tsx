@@ -1,9 +1,9 @@
 'use client'
 
-import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/use-auth'
 import { useHousehold } from '@/hooks/use-household'
+import { useSelectedMonth } from '@/hooks/use-selected-month'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import {
@@ -21,7 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { getInitials, formatMonth, getCurrentMonth } from '@/lib/utils'
+import { getInitials, formatMonth } from '@/lib/utils'
 import { 
   Bell, 
   User, 
@@ -36,8 +36,7 @@ export function AppTopbar() {
   const router = useRouter()
   const { profile, signOut } = useAuth()
   const { households, currentHousehold, setCurrentHousehold } = useHousehold()
-  
-  const [selectedMonth, setSelectedMonth] = useState(getCurrentMonth())
+  const { selectedMonth, setSelectedMonth } = useSelectedMonth(currentHousehold?.id)
 
   // Generate last 6 months for selector
   const months = Array.from({ length: 6 }, (_, i) => {

@@ -27,9 +27,10 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { useHousehold } from '@/hooks/use-household'
 import { useAuth } from '@/hooks/use-auth'
+import { useSelectedMonth } from '@/hooks/use-selected-month'
 import { useToast } from '@/components/ui/toast'
 import { supabaseBrowser } from '@/lib/supabase'
-import { formatCurrency, formatDate, getCurrentMonth, getCurrentDate, getCategoryColor, getPaymentMethodLabel, paymentMethodLabels } from '@/lib/utils'
+import { formatCurrency, formatDate, getCurrentDate, getCategoryColor, getPaymentMethodLabel, paymentMethodLabels } from '@/lib/utils'
 import { 
   Plus, 
   Search,
@@ -38,7 +39,6 @@ import {
   Pencil,
   Trash2,
   Receipt,
-  Calendar,
   Tag,
   Camera
 } from 'lucide-react'
@@ -140,6 +140,7 @@ function saveDemoExpenses(expenses: Expense[]) {
 
 export default function ExpensesPage() {
   const { currentHousehold, isDemoMode: hookIsDemoMode } = useHousehold()
+  const { selectedMonth } = useSelectedMonth(currentHousehold?.id)
   
   // Check if we're in demo mode - use hook state AND check household ID
   const checkIsDemoMode = () => hookIsDemoMode && currentHousehold?.id.startsWith('demo-')
@@ -152,7 +153,7 @@ export default function ExpensesPage() {
   const [budgetedCategoryIds, setBudgetedCategoryIds] = useState<string[]>([]) // Categories with variable budget
   const [searchQuery, setSearchQuery] = useState('')
   const [filterCategory, setFilterCategory] = useState<string>('all')
-  const [filterMonth, setFilterMonth] = useState(() => getCurrentMonth())
+  const filterMonth = selectedMonth
   
   // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -177,11 +178,6 @@ export default function ExpensesPage() {
       loadData()
     }
   }, [currentHousehold, filterMonth])
-
-  // Ensure we default to the current month on first mount (avoid timezone/initialization quirks)
-  useEffect(() => {
-    setFilterMonth(getCurrentMonth())
-  }, [])
 
   const loadData = async () => {
     if (!currentHousehold) return
@@ -515,22 +511,6 @@ export default function ExpensesPage() {
   // Calculate total
   const totalFiltered = filteredExpenses.reduce((sum, e) => sum + e.amount, 0)
 
-  // Generate months for selector (always includes the current month)
-  const months = useMemo(() => {
-    const current = getCurrentMonth()
-    const [y, m] = current.split('-').map(Number)
-    const base = new Date(y, m - 1, 1)
-
-    const result: string[] = []
-    for (let i = 0; i < 12; i++) {
-      const d = new Date(base.getFullYear(), base.getMonth() - i, 1)
-      result.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
-    }
-
-    // Keep unique + stable order
-    return Array.from(new Set(result))
-  }, [])
-
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -566,19 +546,6 @@ export default function ExpensesPage() {
                 className="pl-10"
               />
             </div>
-            <Select value={filterMonth} onValueChange={setFilterMonth}>
-              <SelectTrigger className="w-[160px]">
-                <Calendar className="h-4 w-4 mr-2" />
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {months.map(m => (
-                  <SelectItem key={m} value={m}>
-                    {new Date(m + '-01').toLocaleDateString('es-CL', { month: 'long', year: 'numeric' })}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
             <Select value={filterCategory} onValueChange={setFilterCategory}>
               <SelectTrigger className="w-[180px]">
                 <Tag className="h-4 w-4 mr-2" />
