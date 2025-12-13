@@ -212,14 +212,19 @@ export default function InsightsPage() {
           endOp(op, true, { totalIncome, totalBudgeted, totalSpent })
         } else {
           const body = await response.json().catch(() => null)
-          throw new Error(body?.error || 'Error al generar insights')
+          throw new Error(body?.error || `Error al generar insights (HTTP ${response.status})`)
         }
-      } catch {
+      } catch (e) {
+        logOp(op, 'warn', 'ai insights unavailable, using local fallback', 'ai.fallback', {
+          reason: formatSupabaseError(e),
+          totals: { totalIncome, totalBudgeted, totalSpent },
+        })
         // Fallback to mock insights
         const mockReport: InsightsReport = {
           bullets: [
             `Has gastado $${totalSpent.toLocaleString('es-CL')} de tu presupuesto de $${totalBudgeted.toLocaleString('es-CL')} este mes`,
             `Llevas ${Math.round((totalSpent / totalBudgeted) * 100) || 0}% del presupuesto consumido`,
+            `Se analizaron ${expensesSummary ? expensesSummary.split('\n').filter(Boolean).length : 0} gastos (mes ${currentMonth})`,
             totalIncome > totalSpent 
               ? `Balance positivo de $${(totalIncome - totalSpent).toLocaleString('es-CL')}`
               : `Atención: gastos superan ingresos por $${(totalSpent - totalIncome).toLocaleString('es-CL')}`
@@ -245,9 +250,9 @@ export default function InsightsPage() {
           report: mockReport
         }))
         
-        addToast({ 
-          type: 'info', 
-          message: 'Insights generados con datos locales' 
+        addToast({
+          type: 'warning',
+          message: `IA no disponible, mostrando insights con tus datos (opId: ${op.opId})`,
         })
         endOp(op, true, { totalIncome, totalBudgeted, totalSpent, fallback: true })
       }

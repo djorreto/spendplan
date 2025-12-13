@@ -58,8 +58,26 @@ Sé específico, usa números reales del contexto, y da consejos prácticos para
       maxTokens: 1000,
     })
 
-    const parsed = JSON.parse(text)
-    return NextResponse.json(parsed)
+    // LLMs can occasionally include leading/trailing text. Be defensive.
+    const trimmed = String(text || '').trim()
+    const start = trimmed.indexOf('{')
+    const end = trimmed.lastIndexOf('}')
+    const jsonCandidate = start >= 0 && end >= 0 && end > start ? trimmed.slice(start, end + 1) : trimmed
+
+    try {
+      const parsed = JSON.parse(jsonCandidate)
+      return NextResponse.json(parsed)
+    } catch (e) {
+      console.error('Insights JSON parse error:', e)
+      return NextResponse.json(
+        {
+          error: 'AI returned invalid JSON',
+          // Include a short snippet to debug in logs (not full payload)
+          snippet: jsonCandidate.slice(0, 500),
+        },
+        { status: 502 }
+      )
+    }
   } catch (error) {
     console.error('Insights API error:', error)
     return NextResponse.json(
