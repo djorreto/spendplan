@@ -158,9 +158,12 @@ function mainKeyboard(isLinked: boolean) {
   }
 }
 
-function detectIntent(text: string): 'help' | 'link_help' | 'balance' | 'summary' | 'recent' | 'new_expense' | 'expense_like' | 'ai' {
+function detectIntent(
+  text: string
+): 'greeting' | 'help' | 'link_help' | 'balance' | 'summary' | 'recent' | 'new_expense' | 'expense_like' | 'ai' {
   const t = normalizeText(text).toLowerCase()
   if (!t) return 'help'
+  if (/^(hola|holi|buenas|buenos d[ií]as|buenas tardes|buenas noches|hello|hi)\b/i.test(t)) return 'greeting'
   if (t.includes('vincul') || t.includes('codigo') || t.includes('código') || t.includes('config')) return 'link_help'
   if (/(balance|disponible|cu[aá]nto queda|queda|resta|plata)/i.test(t)) return 'balance'
   if (/(resumen|estado|c[oó]mo voy|seguimiento|insights|reporte)/i.test(t)) return 'summary'
@@ -200,14 +203,38 @@ async function handleConversationalText(
 ) {
   const intent = detectIntent(text)
 
-  if (intent === 'help' || intent === 'new_expense') {
+  if (intent === 'greeting') {
+    await sendTelegramMessage(
+      chatId,
+      'Hola 👋\n' +
+        'Puedo ayudarte con SpendPlan: registrar gastos y ver seguimiento del mes.\n\n' +
+        'Toca un botón o escribe directo, por ejemplo: `12990 en Jumbo`.',
+      { reply_markup: mainKeyboard(true) }
+    )
+    return
+  }
+
+  if (intent === 'new_expense') {
+    await sendTelegramMessage(
+      chatId,
+      'Perfecto. Envíame el gasto así (un mensaje):\n' +
+        '• `12990 en Jumbo`\n' +
+        '• `8500 almuerzo crédito`\n' +
+        '• `1500 chocolate de Varsovia`\n\n' +
+        'Luego te pido *Confirmar* antes de guardarlo.',
+      { reply_markup: mainKeyboard(true) }
+    )
+    return
+  }
+
+  if (intent === 'help') {
     await sendTelegramMessage(
       chatId,
       'Cuéntame qué necesitas:\n' +
         '• *Resumen* del mes\n' +
-        '• *Balance* disponible\n' +
-        '• *Registrar gasto* (ej: `12990 en Jumbo`)\n\n' +
-        'También puedes escribir directo: `8500 almuerzo crédito`',
+        '• *Balance* / seguimiento\n' +
+        '• *Registrar gasto*\n\n' +
+        'Tip: también puedes escribir directo un gasto (ej: `12990 en Jumbo`).',
       { reply_markup: mainKeyboard(true) }
     )
     return
