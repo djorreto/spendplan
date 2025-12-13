@@ -14,6 +14,7 @@ import {
   sendTelegramMessage, 
   answerTelegramCallbackQuery,
   editTelegramMessageReplyMarkup,
+  editTelegramMessageText,
   parseExpenseFromText,
   formatExpenseResponse,
   type TelegramMessage 
@@ -478,7 +479,8 @@ async function proposeExpenseForConfirmation(
   text: string,
   link: { household_id: string; user_id: string }
 ) {
-  const parsed = parseExpenseFromText(text)
+  // Best effort: let Groq interpret messy/free-form inputs
+  const parsed = await parseExpenseSmart(link.household_id, text)
 
   if (!parsed.amount) {
     await sendTelegramMessage(
@@ -493,7 +495,7 @@ async function proposeExpenseForConfirmation(
   }
 
   const supabase = getSupabase()
-  const expenseDate = parseDateFromText(text) || new Date().toISOString().split('T')[0]
+  const expenseDate = parsed.date || parseDateFromText(text) || new Date().toISOString().split('T')[0]
 
   // Category suggestion (best effort)
   const catSuggestion = await suggestCategoryForExpense(link.household_id, {
@@ -507,7 +509,7 @@ async function proposeExpenseForConfirmation(
 
   // Create pending expense (confirmed only after user presses button)
   const extraNotes = [parsed.notes].filter(Boolean).join('\n').trim()
-  const notes = [`telegram_user:${odId}`, extraNotes].filter(Boolean).join('\n')
+  const notes = [`telegram_user:${odId}`, `telegram_chat:${chatId}`, extraNotes].filter(Boolean).join('\n')
 
   const { data: inserted, error } = await supabase
     .from('expenses')
@@ -541,29 +543,95 @@ async function proposeExpenseForConfirmation(
 
   const expenseId = inserted.id as string
 
+  const categories = await getActiveCategoriesForHousehold(link.household_id)
   const preview =
     `📝 *Gasto detectado*\n\n` +
     `• Monto: ${formatMoney(parsed.amount)}\n` +
     (parsed.merchant ? `• Comercio: ${parsed.merchant}\n` : '') +
-    (parsed.description && parsed.description !== text ? `• Descripción: ${parsed.description}\n` : '') +
+    (parsed.description ? `• Descripción: ${parsed.description}\n` : '') +
     (parsed.notes ? `• Notas: ${parsed.notes}\n` : '') +
     `• Fecha: ${expenseDate}\n` +
     (parsed.payment_method ? `• Pago: ${parsed.payment_method}\n` : '') +
     (categoryLabel
       ? `• Categoría sugerida: ${categoryLabel} (${Math.round((catSuggestion?.confidence || 0) * 100)}%)\n`
       : '') +
-    `\n¿Lo guardo?`
+    `\n¿Lo guardo? (puedes tocar una categoría para cambiarla)`
 
   await sendTelegramMessage(chatId, preview, {
-    reply_markup: {
-      inline_keyboard: [
-        [
-          { text: '✅ Confirmar', callback_data: `confirm:${expenseId}` },
-          { text: '❌ Cancelar', callback_data: `cancel:${expenseId}` },
-        ],
-      ],
-    },
+    reply_markup: buildExpenseInlineKeyboard(expenseId, categories, applyCategoryId, 0),
   })
+}
+
+async function parseExpenseSmart(
+  householdId: string,
+  text: string
+): Promise<ReturnType<typeof parseExpenseFromText> & { date: string | null }> {
+  const apiKey = process.env.GROQ_API_KEY
+  if (!apiKey) {
+    return { ...parseExpenseFromText(text), date: null }
+  }
+
+  const groq = createOpenAI({ apiKey, baseURL: 'https://api.groq.com/openai/v1' })
+
+  const prompt = `Extrae un gasto desde un mensaje informal (Chile). Responde SOLO JSON válido.
+
+MENSAJE:
+${text}
+
+Objetivo:
+- merchant: comercio (ej: Líder, Jumbo, Shell)
+- description: qué se compró (corto, ej: galletas)
+- notes: contexto adicional (largo, ej: "para cumpleaños de ...")
+- date: fecha en YYYY-MM-DD si el usuario la indicó (ayer/anteayer/dd/mm), si no null
+- payment_method: cash|debit|credit|transfer|null (si el usuario lo dice)
+
+Reglas:
+- Si el texto viene como "12990 en Líder, galletas, para cumpleaños", merchant=Líder, description=galletas, notes="para cumpleaños".
+- Si el usuario no indica fecha, date=null.
+
+Devuelve este formato exacto:
+{"amount":0,"merchant":null,"description":null,"notes":null,"payment_method":null,"date":null,"confidence":0.0}
+`
+
+  const { text: out } = await generateText({
+    model: groq('llama-3.3-70b-versatile'),
+    system: 'Responde únicamente en JSON válido, sin markdown.',
+    prompt,
+    temperature: 0.1,
+    maxTokens: 220,
+  })
+
+  const trimmed = String(out || '').trim()
+  const start = trimmed.indexOf('{')
+  const end = trimmed.lastIndexOf('}')
+  const jsonCandidate = start >= 0 && end >= 0 && end > start ? trimmed.slice(start, end + 1) : trimmed
+
+  try {
+    const parsed = JSON.parse(jsonCandidate) as any
+    const amount = Number(parsed.amount)
+    const merchant = parsed.merchant ? String(parsed.merchant).trim() : null
+    const description = parsed.description ? String(parsed.description).trim() : null
+    const notes = parsed.notes ? String(parsed.notes).trim() : null
+    const payment_method = parsed.payment_method ? String(parsed.payment_method).trim() : null
+    const date = parsed.date ? String(parsed.date).trim() : null
+    const confidence = Math.max(0, Math.min(1, Number(parsed.confidence ?? 0.5)))
+
+    // If low confidence or amount missing, fall back to deterministic parser
+    if (!Number.isFinite(amount) || amount <= 0 || confidence < 0.55) {
+      return { ...parseExpenseFromText(text), date: null }
+    }
+
+    return {
+      amount: Math.round(amount),
+      merchant: merchant || null,
+      description: description || null,
+      notes: notes || null,
+      payment_method: (['cash', 'debit', 'credit', 'transfer'].includes(payment_method) ? payment_method : null) as any,
+      date: date || null,
+    }
+  } catch {
+    return { ...parseExpenseFromText(text), date: null }
+  }
 }
 
 function parseDateFromText(text: string): string | null {
@@ -700,16 +768,68 @@ async function handleCallbackQuery(cb: TelegramCallbackQuery) {
   if (!chatId || !messageId || !data) return
 
   const supabase = getSupabase()
-  const [action, expenseId] = data.split(':')
-  if (!action || !expenseId) return
+  const parts = data.split(':')
+  const action = parts[0]
+  if (!action) return
 
   // Stop Telegram "loading…" immediately
   await answerTelegramCallbackQuery(cb.id, { text: 'Listo' })
-  // Remove buttons so it can't be pressed again
-  await editTelegramMessageReplyMarkup(chatId, messageId, { inline_keyboard: [] })
   await touchTelegramActivity(cb.from.id)
 
+  // Category selection / pagination (keeps the message, edits it)
+  if (action === 'cat' || action === 'catp') {
+    const expenseId = parts[1]
+    if (!expenseId) return
+
+    const { data: link } = await supabase
+      .from('telegram_links')
+      .select('household_id, user_id')
+      .eq('telegram_user_id', cb.from.id)
+      .not('linked_at', 'is', null)
+      .single()
+    if (!link) return
+
+    const categories = await getActiveCategoriesForHousehold(link.household_id)
+    if (!categories || categories.length === 0) return
+
+    const pageSize = 6
+    let nextOffset = 0
+
+    if (action === 'cat') {
+      const idx = Number(parts[2] || -1)
+      const cat = Number.isFinite(idx) && idx >= 0 && idx < categories.length ? categories[idx] : null
+      if (cat) {
+        await supabase
+          .from('expenses')
+          .update({ category_id: cat.id })
+          .eq('id', expenseId)
+          .eq('status', 'pending')
+      }
+      nextOffset = Number.isFinite(idx) && idx >= 0 ? Math.floor(idx / pageSize) * pageSize : 0
+    } else {
+      const offset = Number(parts[2] || 0)
+      nextOffset = Number.isFinite(offset) && offset >= 0 ? offset : 0
+    }
+
+    // Refresh message with updated category and keyboard
+    const { data: exp } = await supabase
+      .from('expenses')
+      .select('id, amount, merchant, description, expense_date, payment_method, notes, category_id, ai_category_suggestion, ai_confidence')
+      .eq('id', expenseId)
+      .single()
+    if (!exp) return
+
+    const preview = buildExpensePreviewText(exp, categories)
+    const kb = buildExpenseInlineKeyboard(expenseId, categories, exp.category_id || null, nextOffset)
+    await editTelegramMessageText(chatId, messageId, preview, { reply_markup: kb })
+    return
+  }
+
   if (action === 'confirm') {
+    const expenseId = parts[1]
+    if (!expenseId) return
+    // Remove buttons so it can't be pressed again
+    await editTelegramMessageReplyMarkup(chatId, messageId, { inline_keyboard: [] })
     const { data: updated, error } = await supabase
       .from('expenses')
       .update({ status: 'confirmed' })
@@ -728,6 +848,10 @@ async function handleCallbackQuery(cb: TelegramCallbackQuery) {
   }
 
   if (action === 'cancel') {
+    const expenseId = parts[1]
+    if (!expenseId) return
+    // Remove buttons so it can't be pressed again
+    await editTelegramMessageReplyMarkup(chatId, messageId, { inline_keyboard: [] })
     const { data: updated, error } = await supabase
       .from('expenses')
       .update({ status: 'cancelled' })
@@ -742,6 +866,92 @@ async function handleCallbackQuery(cb: TelegramCallbackQuery) {
       await sendTelegramMessage(chatId, 'Cancelado. No guardé ese gasto.', { reply_markup: mainKeyboard(true) })
     }
   }
+}
+
+type Cat = { id: string; name: string }
+
+async function getActiveCategoriesForHousehold(householdId: string): Promise<Cat[]> {
+  const supabase = getSupabase()
+  const { data, error } = await supabase
+    .from('categories')
+    .select('id, name, is_system, household_id, is_active')
+    .or(`household_id.eq.${householdId},is_system.eq.true`)
+    .eq('is_active', true)
+    .order('sort_order')
+  if (error) return []
+  return (data || [])
+    .filter((c: any) => c?.name && String(c.name).toLowerCase() !== 'sin clasificar')
+    .map((c: any) => ({ id: c.id, name: c.name }))
+}
+
+function buildExpenseInlineKeyboard(expenseId: string, categories: Cat[], selectedCategoryId: string | null, offset = 0) {
+  const pageSize = 6
+  const start = Math.max(0, Math.min(offset, Math.max(0, categories.length - 1)))
+  const page = categories.slice(start, start + pageSize)
+  const rows: any[] = []
+
+  // Row 1: confirm/cancel
+  rows.push([
+    { text: '✅ Confirmar', callback_data: `confirm:${expenseId}` },
+    { text: '❌ Cancelar', callback_data: `cancel:${expenseId}` },
+  ])
+
+  // Category rows (2 per row)
+  for (let i = 0; i < page.length; i += 2) {
+    const a = page[i]
+    const b = page[i + 1]
+    const row: any[] = []
+    const aIdx = start + i
+    const bIdx = start + i + 1
+    row.push({
+      text: `${selectedCategoryId === a.id ? '✅ ' : ''}${a.name}`,
+      callback_data: `cat:${expenseId}:${aIdx}`,
+    })
+    if (b) {
+      row.push({
+        text: `${selectedCategoryId === b.id ? '✅ ' : ''}${b.name}`,
+        callback_data: `cat:${expenseId}:${bIdx}`,
+      })
+    }
+    rows.push(row)
+  }
+
+  // Pagination
+  const nav: any[] = []
+  if (start > 0) nav.push({ text: '⬅️ Más', callback_data: `catp:${expenseId}:${Math.max(0, start - pageSize)}` })
+  if (start + pageSize < categories.length) nav.push({ text: 'Más ➡️', callback_data: `catp:${expenseId}:${start + pageSize}` })
+  if (nav.length > 0) rows.push(nav)
+
+  return { inline_keyboard: rows }
+}
+
+function extractUserNotesFromStoredNotes(notes: unknown): string | null {
+  const n = String(notes || '').trim()
+  if (!n) return null
+  const lines = n.split('\n').map((l) => l.trim()).filter(Boolean)
+  const filtered = lines.filter((l) => !l.startsWith('telegram_user:') && !l.startsWith('telegram_chat:'))
+  return filtered.length > 0 ? filtered.join('\n').slice(0, 300) : null
+}
+
+function buildExpensePreviewText(exp: any, categories: Cat[]): string {
+  const amount = Number(exp.amount) || 0
+  const catName = exp.category_id ? categories.find((c) => c.id === exp.category_id)?.name : null
+  const suggestedName = exp.ai_category_suggestion ? categories.find((c) => c.id === exp.ai_category_suggestion)?.name : null
+  const notes = extractUserNotesFromStoredNotes(exp.notes)
+  const lines: string[] = []
+  lines.push('📝 *Gasto detectado*')
+  lines.push('')
+  lines.push(`• Monto: ${formatMoney(amount)}`)
+  if (exp.merchant) lines.push(`• Comercio: ${exp.merchant}`)
+  if (exp.description) lines.push(`• Descripción: ${exp.description}`)
+  if (notes) lines.push(`• Notas: ${notes}`)
+  if (exp.expense_date) lines.push(`• Fecha: ${String(exp.expense_date)}`)
+  if (exp.payment_method && exp.payment_method !== 'unknown') lines.push(`• Pago: ${exp.payment_method}`)
+  if (catName) lines.push(`• Categoría: ${catName}`)
+  else if (suggestedName) lines.push(`• Categoría sugerida: ${suggestedName} (${Math.round((Number(exp.ai_confidence) || 0) * 100)}%)`)
+  lines.push('')
+  lines.push('¿Lo guardo? (puedes tocar una categoría para cambiarla)')
+  return lines.join('\n')
 }
 
 async function handleCommand(

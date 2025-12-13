@@ -364,6 +364,37 @@ export async function editTelegramMessageReplyMarkup(
 }
 
 /**
+ * Edit message text (used to update confirmations inline)
+ */
+export async function editTelegramMessageText(
+  chatId: number,
+  messageId: number,
+  text: string,
+  options?: { parse_mode?: 'Markdown' | 'HTML'; reply_markup?: object }
+): Promise<boolean> {
+  const botToken = process.env.TELEGRAM_BOT_TOKEN
+  if (!botToken) return false
+
+  try {
+    const response = await fetch(`https://api.telegram.org/bot${botToken}/editMessageText`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        message_id: messageId,
+        text,
+        parse_mode: options?.parse_mode || 'Markdown',
+        reply_markup: options?.reply_markup,
+      }),
+    })
+    return response.ok
+  } catch (error) {
+    console.error('Error editing message text:', error)
+    return false
+  }
+}
+
+/**
  * Download file from Telegram
  */
 export async function downloadTelegramFile(fileId: string): Promise<Buffer | null> {
