@@ -92,6 +92,7 @@ export function useHousehold() {
       }
 
       // Obtener membresías con hogares
+      console.log('🏠 Fetching memberships for user:', user.id)
       const { data: memberships, error } = await supabase
         .from('household_memberships')
         .select(`
@@ -101,8 +102,10 @@ export function useHousehold() {
         .eq('user_id', user.id)
         .eq('is_active', true)
 
+      console.log('🏠 Memberships result:', { memberships, error })
+
       if (error) {
-        console.warn('Supabase error, checking demo mode:', error)
+        console.warn('🏠 Supabase error, checking demo mode:', error)
         // Si hay error de Supabase pero hay demo, usar demo
         if (demoHousehold) {
           setState(prev => ({
@@ -130,10 +133,14 @@ export function useHousehold() {
         ?.map(m => m.household as Household)
         .filter(Boolean) || []
 
+      console.log('🏠 Households found:', households.length, households.map(h => h.name))
+
       // Usar el primer hogar como actual (o el guardado en localStorage)
       const savedHouseholdId = localStorage.getItem('currentHouseholdId')
       const currentHousehold = households.find(h => h.id === savedHouseholdId) || households[0] || null
       const membership = memberships?.find(m => m.household_id === currentHousehold?.id) || null
+
+      console.log('🏠 Current household:', currentHousehold?.name || 'NONE')
 
       setState(prev => ({
         ...prev,
@@ -144,6 +151,8 @@ export function useHousehold() {
         error: null,
         isDemoMode: false,
       }))
+      
+      console.log('🏠 Households loaded successfully')
 
       // Cargar miembros si hay hogar actual
       if (currentHousehold) {
