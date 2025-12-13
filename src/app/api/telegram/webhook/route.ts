@@ -509,7 +509,7 @@ async function proposeExpenseForConfirmation(
 
   // Create pending expense (confirmed only after user presses button)
   const extraNotes = [parsed.notes].filter(Boolean).join('\n').trim()
-  const notes = [`telegram_user:${odId}`, `telegram_chat:${chatId}`, extraNotes].filter(Boolean).join('\n')
+  const notes = [`telegram_user:${odId}`, extraNotes].filter(Boolean).join('\n')
 
   const { data: inserted, error } = await supabase
     .from('expenses')
