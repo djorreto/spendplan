@@ -66,6 +66,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import type { Category, Expense } from '@/types'
+import { supabaseBrowser } from '@/lib/supabase'
+import { useAuth } from '@/hooks/use-auth'
 import {
   BarChart,
   Bar,
@@ -161,9 +163,8 @@ interface BudgetData {
 
 // Helper functions
 function isDemoMode(): boolean {
-  // Siempre usar localStorage para presupuesto hasta integrar Supabase
-  // TODO: Integrar con tablas de Supabase para presupuesto
-  return true
+  if (typeof window === 'undefined') return false
+  return !!localStorage.getItem('spendplan_demo_user')
 }
 
 function getBudgetData(): BudgetData {
@@ -174,6 +175,93 @@ function getBudgetData(): BudgetData {
 
 function saveBudgetData(data: BudgetData) {
   localStorage.setItem(DEMO_BUDGET_KEY, JSON.stringify(data))
+}
+
+// Supabase functions for budget items
+async function loadBudgetItemsFromSupabase(householdId: string): Promise<BudgetItem[]> {
+  const supabase = supabaseBrowser()
+  const { data, error } = await supabase
+    .from('budget_items')
+    .select('*')
+    .eq('household_id', householdId)
+    .order('created_at', { ascending: true })
+  
+  if (error) {
+    console.error('Error loading budget items:', error)
+    return []
+  }
+  
+  // Transform from DB format to app format
+  return (data || []).map(item => ({
+    id: item.id,
+    kind: item.kind as ItemKind,
+    type: item.type as BudgetType,
+    name: item.name,
+    amount: parseFloat(item.amount) || 0,
+    category_id: item.category_id,
+    frequency: (item.frequency || 'monthly') as Frequency,
+    start_date: item.start_date || new Date().toISOString().split('T')[0],
+    end_date: item.end_date,
+    is_indefinite: item.is_indefinite ?? true,
+    is_active: item.is_active ?? true,
+    manually_deactivated: !item.is_active,
+    is_installment: !!item.installments_total,
+    total_installments: item.installments_total,
+    notes: '',
+    created_at: item.created_at,
+    updated_at: item.updated_at,
+  }))
+}
+
+async function saveBudgetItemToSupabase(
+  item: BudgetItem, 
+  householdId: string,
+  userId: string
+): Promise<{ success: boolean; error?: string }> {
+  const supabase = supabaseBrowser()
+  
+  const dbItem = {
+    id: item.id,
+    household_id: householdId,
+    name: item.name,
+    amount: item.amount,
+    kind: item.kind,
+    type: item.type,
+    category_id: item.category_id || null,
+    frequency: item.frequency,
+    is_active: item.is_active && !item.manually_deactivated,
+    start_date: item.start_date,
+    end_date: item.is_indefinite ? null : item.end_date,
+    is_indefinite: item.is_indefinite,
+    installments_total: item.total_installments || null,
+    installments_paid: 0,
+    created_by: userId,
+  }
+  
+  const { error } = await supabase
+    .from('budget_items')
+    .upsert(dbItem, { onConflict: 'id' })
+  
+  if (error) {
+    console.error('Error saving budget item:', error)
+    return { success: false, error: error.message }
+  }
+  
+  return { success: true }
+}
+
+async function deleteBudgetItemFromSupabase(itemId: string): Promise<boolean> {
+  const supabase = supabaseBrowser()
+  const { error } = await supabase
+    .from('budget_items')
+    .delete()
+    .eq('id', itemId)
+  
+  if (error) {
+    console.error('Error deleting budget item:', error)
+    return false
+  }
+  return true
 }
 
 function getDemoExpenses(): Expense[] {
@@ -261,7 +349,8 @@ const TYPE_CONFIG = {
 }
 
 export default function BudgetPage() {
-  const { currentHousehold } = useHousehold()
+  const { currentHousehold, isDemoMode: isHouseholdDemo } = useHousehold()
+  const { profile } = useAuth()
   const { addToast } = useToast()
   
   const [loading, setLoading] = useState(true)
@@ -269,6 +358,9 @@ export default function BudgetPage() {
   const [categories, setCategories] = useState<Category[]>([])
   const [budgetItems, setBudgetItems] = useState<BudgetItem[]>([])
   const [expenses, setExpenses] = useState<Expense[]>([])
+  
+  // Check if we're in demo mode
+  const isDemo = isDemoMode() || isHouseholdDemo || currentHousehold?.id?.startsWith('demo-')
   
   // View state
   const [currentMonth] = useState(getCurrentMonth())
@@ -309,7 +401,7 @@ export default function BudgetPage() {
   const loadData = async () => {
     setLoading(true)
 
-    if (isDemoMode()) {
+    if (isDemo) {
       // Load demo categories + custom categories
       const customCats = getCustomCategories()
       setCategories([...DEMO_CATEGORIES, ...customCats])
@@ -335,18 +427,80 @@ export default function BudgetPage() {
       if (JSON.stringify(updatedItems) !== JSON.stringify(data.items)) {
         saveBudgetData({ items: updatedItems })
       }
-      } else {
+    } else if (currentHousehold) {
+      // Load from Supabase
+      try {
+        // Load categories from Supabase or use defaults
+        const supabase = supabaseBrowser()
+        const { data: dbCategories } = await supabase
+          .from('categories')
+          .select('*')
+          .or(`household_id.eq.${currentHousehold.id},is_system.eq.true`)
+          .order('sort_order')
+        
+        if (dbCategories && dbCategories.length > 0) {
+          setCategories(dbCategories)
+        } else {
+          setCategories(DEMO_CATEGORIES)
+        }
+        
+        // Load budget items
+        const items = await loadBudgetItemsFromSupabase(currentHousehold.id)
+        const today = new Date()
+        const updatedItems = items.map(item => ({
+          ...item,
+          is_active: isItemActiveByDate(item, today)
+        }))
+        setBudgetItems(updatedItems)
+        
+        // Load expenses
+        const { data: dbExpenses } = await supabase
+          .from('expenses')
+          .select('*')
+          .eq('household_id', currentHousehold.id)
+          .gte('expense_date', `${currentMonth}-01`)
+          .order('expense_date', { ascending: false })
+        
+        if (dbExpenses) {
+          setExpenses(dbExpenses)
+          setAllExpenses(dbExpenses)
+        }
+      } catch (error) {
+        console.error('Error loading budget data:', error)
+        addToast({ type: 'error', message: 'Error al cargar presupuesto' })
+        setCategories(DEMO_CATEGORIES)
+        setBudgetItems([])
+      }
+    } else {
       setCategories(DEMO_CATEGORIES)
       setBudgetItems([])
-      }
-    
-      setLoading(false)
     }
+    
+    setLoading(false)
+  }
 
-  const handleSave = () => {
+  const handleSave = async () => {
     setSaving(true)
-    saveBudgetData({ items: budgetItems })
-    addToast({ type: 'success', message: 'Presupuesto guardado' })
+    
+    if (isDemo) {
+      saveBudgetData({ items: budgetItems })
+      addToast({ type: 'success', message: 'Presupuesto guardado' })
+    } else if (currentHousehold && profile) {
+      // Save all items to Supabase
+      let hasError = false
+      for (const item of budgetItems) {
+        const result = await saveBudgetItemToSupabase(item, currentHousehold.id, profile.id)
+        if (!result.success) {
+          hasError = true
+        }
+      }
+      if (hasError) {
+        addToast({ type: 'error', message: 'Error al guardar algunos items' })
+      } else {
+        addToast({ type: 'success', message: 'Presupuesto guardado' })
+      }
+    }
+    
     setSaving(false)
   }
 
@@ -660,33 +814,49 @@ export default function BudgetPage() {
     }
 
     setBudgetItems(updatedItems)
-    saveBudgetData({ items: updatedItems })
+    
+    // Save to storage
+    if (isDemo) {
+      saveBudgetData({ items: updatedItems })
+    } else if (currentHousehold && profile) {
+      saveBudgetItemToSupabase(newItem, currentHousehold.id, profile.id)
+    }
+    
     setDialogOpen(false)
     setIsNewCategory(false)
     setNewCategoryName('')
   }
 
-  const toggleItemActive = (item: BudgetItem) => {
-    const updatedItems = budgetItems.map(i => {
-      if (i.id === item.id) {
-        return {
-          ...i,
-          manually_deactivated: !i.manually_deactivated,
-          is_active: i.manually_deactivated ? isItemActiveByDate(i) : false,
-          updated_at: new Date().toISOString(),
-        }
-      }
-      return i
-    })
+  const toggleItemActive = async (item: BudgetItem) => {
+    const updatedItem = {
+      ...item,
+      manually_deactivated: !item.manually_deactivated,
+      is_active: item.manually_deactivated ? isItemActiveByDate(item) : false,
+      updated_at: new Date().toISOString(),
+    }
+    
+    const updatedItems = budgetItems.map(i => i.id === item.id ? updatedItem : i)
     setBudgetItems(updatedItems)
-    saveBudgetData({ items: updatedItems })
+    
+    if (isDemo) {
+      saveBudgetData({ items: updatedItems })
+    } else if (currentHousehold && profile) {
+      await saveBudgetItemToSupabase(updatedItem, currentHousehold.id, profile.id)
+    }
+    
     addToast({ type: 'success', message: item.is_active ? 'Item desactivado' : 'Item reactivado' })
   }
 
-  const deleteItem = (id: string) => {
+  const deleteItem = async (id: string) => {
     const updatedItems = budgetItems.filter(item => item.id !== id)
     setBudgetItems(updatedItems)
-    saveBudgetData({ items: updatedItems })
+    
+    if (isDemo) {
+      saveBudgetData({ items: updatedItems })
+    } else {
+      await deleteBudgetItemFromSupabase(id)
+    }
+    
     addToast({ type: 'success', message: 'Item eliminado' })
   }
 
