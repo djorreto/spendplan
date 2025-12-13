@@ -506,6 +506,9 @@ async function proposeExpenseForConfirmation(
   const categoryLabel = catSuggestion?.category_name || null
 
   // Create pending expense (confirmed only after user presses button)
+  const extraNotes = [parsed.notes].filter(Boolean).join('\n').trim()
+  const notes = [`telegram_user:${odId}`, extraNotes].filter(Boolean).join('\n')
+
   const { data: inserted, error } = await supabase
     .from('expenses')
     .insert({
@@ -523,7 +526,7 @@ async function proposeExpenseForConfirmation(
       ai_reason: catSuggestion?.reason ?? null,
       created_by: link.user_id,
       updated_by: link.user_id,
-      notes: `telegram_user:${odId}`,
+      notes,
     })
     .select('id')
     .single()
@@ -543,6 +546,7 @@ async function proposeExpenseForConfirmation(
     `• Monto: ${formatMoney(parsed.amount)}\n` +
     (parsed.merchant ? `• Comercio: ${parsed.merchant}\n` : '') +
     (parsed.description && parsed.description !== text ? `• Descripción: ${parsed.description}\n` : '') +
+    (parsed.notes ? `• Notas: ${parsed.notes}\n` : '') +
     `• Fecha: ${expenseDate}\n` +
     (parsed.payment_method ? `• Pago: ${parsed.payment_method}\n` : '') +
     (categoryLabel

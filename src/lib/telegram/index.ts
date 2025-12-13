@@ -92,12 +92,14 @@ export function parseExpenseFromText(text: string): {
   amount: number | null
   merchant: string | null
   description: string | null
+  notes: string | null
   payment_method: 'cash' | 'debit' | 'credit' | 'transfer' | null
 } {
   const result: ReturnType<typeof parseExpenseFromText> = {
     amount: null,
     merchant: null,
     description: null,
+    notes: null,
     payment_method: null
   }
   
@@ -169,7 +171,34 @@ export function parseExpenseFromText(text: string): {
           // Only accept if user explicitly separated with punctuation
           if (/^[,;:\-–—]/.test(after)) {
             const cleaned = after.replace(/^[,;:\-–—]+\s*/g, '').trim()
-            if (cleaned.length > 1) result.description = cleaned.substring(0, 120)
+            if (cleaned.length > 1) {
+              // Split into description vs notes when there is additional context.
+              // Examples:
+              // - "galletas" => description
+              // - "galletas, para el cumpleaños..." => description + notes
+              // - "compras para el cumpleaños..." => notes (long)
+              const markerMatch = cleaned.match(/\b(nota|notas|obs|observaci[oó]n|para)\b\s*:?\s*/i)
+              if (markerMatch && markerMatch.index !== undefined) {
+                const i = markerMatch.index
+                const left = cleaned.slice(0, i).trim().replace(/[,\-–—:;]+$/g, '').trim()
+                const right = cleaned.slice(i).trim()
+                if (left) result.description = left.substring(0, 120)
+                result.notes = right.substring(0, 300)
+              } else if (cleaned.includes(',')) {
+                const parts = cleaned.split(',').map((p) => p.trim()).filter(Boolean)
+                if (parts.length > 0) {
+                  result.description = parts[0].substring(0, 120)
+                  if (parts.length > 1) result.notes = parts.slice(1).join(', ').substring(0, 300)
+                }
+              } else {
+                const words = cleaned.split(/\s+/).filter(Boolean)
+                if (cleaned.length > 30 || words.length > 4) {
+                  result.notes = cleaned.substring(0, 300)
+                } else {
+                  result.description = cleaned.substring(0, 120)
+                }
+              }
+            }
           }
         }
       } catch {
@@ -190,9 +219,9 @@ export function parseExpenseFromText(text: string): {
     result.payment_method = 'transfer'
   }
   
-  // Use original text as description if no merchant was detected
+  // If we couldn't split content and there is no merchant, keep the raw text as description
   if (!result.description && !result.merchant) {
-    result.description = text.substring(0, 100)
+    result.description = text.substring(0, 120)
   }
   
   return result
