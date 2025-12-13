@@ -16,6 +16,35 @@ interface HouseholdState {
   isDemoMode: boolean
 }
 
+const INITIAL_HOUSEHOLD_STATE: HouseholdState = {
+  households: [],
+  currentHousehold: null,
+  membership: null,
+  members: [],
+  invitations: [],
+  loading: true,
+  error: null,
+  isDemoMode: false,
+}
+
+// ------------------------------------------------------------
+// Global store (shared across all hook instances)
+// This avoids "Dashboard loads only after visiting Budget" issues,
+// caused by each component having its own isolated hook state.
+// ------------------------------------------------------------
+let globalHouseholdState: HouseholdState = INITIAL_HOUSEHOLD_STATE
+const householdListeners = new Set<(s: HouseholdState) => void>()
+
+function setGlobalHouseholdState(
+  updater: HouseholdState | ((prev: HouseholdState) => HouseholdState)
+) {
+  globalHouseholdState =
+    typeof updater === 'function'
+      ? (updater as (prev: HouseholdState) => HouseholdState)(globalHouseholdState)
+      : updater
+  householdListeners.forEach((fn) => fn(globalHouseholdState))
+}
+
 // Cache y debounce
 let householdCache: { households: Household[], timestamp: number } | null = null
 const CACHE_TTL = 30000 // 30 segundos
@@ -53,16 +82,25 @@ function saveDemoHousehold(household: Household) {
  * Soporta modo demo con localStorage cuando Supabase no está disponible
  */
 export function useHousehold() {
-  const [state, setState] = useState<HouseholdState>({
-    households: [],
-    currentHousehold: null,
-    membership: null,
-    members: [],
-    invitations: [],
-    loading: true,
-    error: null,
-    isDemoMode: false,
-  })
+  const [state, setLocalState] = useState<HouseholdState>(() => globalHouseholdState)
+
+  // Subscribe this hook instance to global store updates
+  useEffect(() => {
+    householdListeners.add(setLocalState)
+    // Sync immediately (in case we subscribed after a change)
+    setLocalState(globalHouseholdState)
+    return () => {
+      householdListeners.delete(setLocalState)
+    }
+  }, [])
+
+  // Wrapper to update global state (and notify all subscribers)
+  const setState = useCallback(
+    (updater: HouseholdState | ((prev: HouseholdState) => HouseholdState)) => {
+      setGlobalHouseholdState(updater)
+    },
+    []
+  )
 
   // Debounce por instancia (evita quedarse en loading al volver desde Home)
   const lastHouseholdLoadRef = useRef(0)
