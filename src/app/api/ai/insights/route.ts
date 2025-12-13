@@ -23,13 +23,14 @@ export async function POST(req: NextRequest) {
       baseURL: 'https://api.groq.com/openai/v1',
     })
 
+    const hasIncome = Number(totalIncome || 0) > 0
     const prompt = `Eres un asesor financiero para hogares chilenos. Analiza los gastos del mes ${month}.
 
 RESUMEN FINANCIERO:
-- Ingresos del mes: $${totalIncome?.toLocaleString('es-CL') || 0}
+- Ingresos del mes: $${totalIncome?.toLocaleString('es-CL') || 0} ${hasIncome ? '' : '(no configurados)'}
 - Presupuesto variable: $${totalBudgeted?.toLocaleString('es-CL') || 0}
 - Total gastado: $${totalSpent?.toLocaleString('es-CL') || 0}
-- Balance: $${((totalIncome || 0) - (totalSpent || 0)).toLocaleString('es-CL')}
+${hasIncome ? `- Balance: $${((totalIncome || 0) - (totalSpent || 0)).toLocaleString('es-CL')}` : `- Balance: N/A (no hay ingresos configurados)`}
 
 GASTOS DEL MES:
 ${expensesSummary || 'Sin gastos registrados'}
@@ -47,6 +48,10 @@ Genera un análisis en JSON con este formato exacto:
   ],
   "recommendations": ["recomendación práctica 1", "recomendación 2", "recomendación 3"]
 }
+
+REGLA IMPORTANTE:
+- Si no hay ingresos (ingresos=0), NO hables de "balance disponible" ni de déficit vs ingresos.
+- En ese caso, enfócate en cumplimiento del presupuesto (gastado vs presupuestado), ritmo del mes y gastos no presupuestados.
 
 Sé específico, usa números reales del contexto, y da consejos prácticos para Chile.`
 

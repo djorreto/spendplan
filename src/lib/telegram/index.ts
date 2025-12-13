@@ -129,7 +129,36 @@ export function parseExpenseFromText(text: string): {
   for (const pattern of merchantPatterns) {
     const match = text.match(pattern)
     if (match && match[1].trim().length > 2) {
-      result.merchant = match[1].trim()
+      const candidate = match[1].trim().replace(/\s+/g, ' ')
+
+      const stripArticles = (s: string) => s.replace(/^(un|una|el|la|los|las|unos|unas)\s+/i, '').trim()
+      const normalizeName = (s: string) => {
+        const t = s.trim()
+        if (!t) return t
+        // If it's all-lowercase, capitalize first letter for nicer UX
+        if (/^[a-záéíóúñ\s]+$/.test(t)) return t.charAt(0).toUpperCase() + t.slice(1)
+        return t
+      }
+
+      // Heuristic: "un chocolate de Varsovia" => description "chocolate", merchant "Varsovia"
+      const lower = candidate.toLowerCase()
+      const idxDe = lower.lastIndexOf(' de ')
+      const idxDel = lower.lastIndexOf(' del ')
+      const idx = Math.max(idxDe, idxDel)
+
+      if (idx > 0) {
+        const sepLen = idx === idxDel ? 5 : 4
+        const before = candidate.slice(0, idx).trim()
+        const after = candidate.slice(idx + sepLen).trim()
+        if (after.length >= 2) {
+          result.merchant = normalizeName(after)
+          const desc = stripArticles(before)
+          if (desc && desc.length > 2) result.description = desc
+          break
+        }
+      }
+
+      result.merchant = normalizeName(candidate)
       break
     }
   }
@@ -145,8 +174,8 @@ export function parseExpenseFromText(text: string): {
     result.payment_method = 'transfer'
   }
   
-  // Use original text as description if no merchant found
-  if (!result.merchant) {
+  // Use original text as description if no merchant was detected
+  if (!result.description && !result.merchant) {
     result.description = text.substring(0, 100)
   }
   

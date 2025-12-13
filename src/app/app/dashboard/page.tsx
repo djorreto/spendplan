@@ -324,12 +324,14 @@ export default function DashboardPage() {
   const totalBudget = (data?.totalVariableBudget || 0)
   const totalSpent = (data?.totalVariableSpent || 0) + (data?.totalUnbudgeted || 0)
   const budgetUsedPercent = totalBudget > 0 ? Math.round((totalSpent / totalBudget) * 100) : 0
+  const hasIncome = (data?.totalIncome || 0) > 0
+  const budgetRemaining = totalBudget - totalSpent
   
   // Calculate expected spending based on days passed
   const expectedPercent = data ? Math.round((data.daysPassed / data.daysInMonth) * 100) : 0
   
   // Check if there's any data at all
-  const hasAnyData = data && (data.totalIncome > 0 || data.totalVariableBudget > 0 || data.recentExpenses.length > 0)
+  const hasAnyData = data && (data.totalVariableBudget > 0 || data.recentExpenses.length > 0 || data.totalVariableSpent > 0 || data.totalUnbudgeted > 0 || data.totalIncome > 0)
   
   // Determine status
   const getStatus = () => {
@@ -347,23 +349,59 @@ export default function DashboardPage() {
       return { icon: AlertTriangle, color: 'text-amber-600', bg: 'bg-amber-50', message: 'Configura tu presupuesto variable para ver el progreso del mes.' }
     }
     
-    const availableReal = data.availableReal
     const difference = budgetUsedPercent - expectedPercent
-    
+
+    // Mode without income: focus on budget tracking (no "balance" language)
+    if (!hasIncome) {
+      if (budgetUsedPercent > 100) {
+        return {
+          icon: AlertTriangle,
+          color: 'text-red-600',
+          bg: 'bg-red-50',
+          message: `Has superado tu presupuesto variable en un ${budgetUsedPercent - 100}%. Presupuesto restante: ${formatCurrency(budgetRemaining, currentHousehold?.currency)}.`
+        }
+      }
+      if (difference > 20) {
+        return {
+          icon: TrendingUp,
+          color: 'text-amber-600',
+          bg: 'bg-amber-50',
+          message: `Vas adelantado en gastos (${budgetUsedPercent}% gastado, esperado ~${expectedPercent}%). Presupuesto restante: ${formatCurrency(budgetRemaining, currentHousehold?.currency)}.`
+        }
+      }
+      if (difference > 0 && difference <= 20) {
+        return {
+          icon: CheckCircle,
+          color: 'text-green-600',
+          bg: 'bg-green-50',
+          message: `Vas bien. Has gastado ${budgetUsedPercent}% de tu presupuesto y van ${expectedPercent}% del mes. Presupuesto restante: ${formatCurrency(budgetRemaining, currentHousehold?.currency)}.`
+        }
+      }
+      return {
+        icon: TrendingDown,
+        color: 'text-green-600',
+        bg: 'bg-green-50',
+        message: `¡Excelente! Vas por debajo del ritmo esperado (${budgetUsedPercent}% gastado vs ${expectedPercent}% del mes). Presupuesto restante: ${formatCurrency(budgetRemaining, currentHousehold?.currency)}.`
+      }
+    }
+
+    // Mode with income: keep "balance" and deficit language
+    const availableReal = data.availableReal
+
     if (availableReal < 0) {
-      return { 
-        icon: XCircle, 
-        color: 'text-red-600', 
-        bg: 'bg-red-50', 
+      return {
+        icon: XCircle,
+        color: 'text-red-600',
+        bg: 'bg-red-50',
         message: `⚠️ Estás en déficit de ${formatCurrency(Math.abs(availableReal), currentHousehold?.currency)}. Revisa tus gastos.`
       }
     }
-    
+
     if (budgetUsedPercent > 100) {
-      return { 
-        icon: AlertTriangle, 
-        color: 'text-red-600', 
-        bg: 'bg-red-50', 
+      return {
+        icon: AlertTriangle,
+        color: 'text-red-600',
+        bg: 'bg-red-50',
         message: `Has superado tu presupuesto variable en un ${budgetUsedPercent - 100}%. Te quedan ${formatCurrency(availableReal, currentHousehold?.currency)} disponibles.`
       }
     }

@@ -207,6 +207,7 @@ async function handleConversationalText(
 type MonthlyContext = {
   month: string
   currency: string
+  hasIncome: boolean
   totalIncome: number
   totalFixed: number
   totalVariableBudget: number
@@ -271,6 +272,7 @@ async function buildMonthlyContext(householdId: string, month: string): Promise<
   const totalIncome = activeIncomes.reduce((sum: number, i: any) => sum + (Number(i.amount) || 0), 0)
   const totalFixed = activeFixed.reduce((sum: number, i: any) => sum + (Number(i.amount) || 0), 0)
   const totalVariableBudget = activeVariable.reduce((sum: number, i: any) => sum + (Number(i.amount) || 0), 0)
+  const hasIncome = totalIncome > 0
 
   const budgetedCategoryIds = new Set(activeVariable.map((v: any) => v.category_id).filter(Boolean))
 
@@ -298,6 +300,7 @@ async function buildMonthlyContext(householdId: string, month: string): Promise<
   return {
     month,
     currency,
+    hasIncome,
     totalIncome,
     totalFixed,
     totalVariableBudget,
@@ -316,6 +319,18 @@ function formatMoney(n: number, currency = 'CLP') {
 }
 
 function formatBalanceMessage(ctx: MonthlyContext) {
+  const totalSpent = ctx.totalVariableSpent + ctx.totalUnbudgeted
+  const remainingBudget = ctx.totalVariableBudget - totalSpent
+  if (!ctx.hasIncome) {
+    return (
+      `📌 *Seguimiento (${ctx.month})*\n\n` +
+      `• Presupuesto variable: ${formatMoney(ctx.totalVariableBudget, ctx.currency)}\n` +
+      `• Gastado: ${formatMoney(totalSpent, ctx.currency)}\n` +
+      `• Restante: ${formatMoney(remainingBudget, ctx.currency)}\n` +
+      (ctx.totalUnbudgeted > 0 ? `• No presupuestado: ${formatMoney(ctx.totalUnbudgeted, ctx.currency)}\n` : '') +
+      `\nTip: si agregas ingresos (opcional) podrás ver “balance disponible”.`
+    )
+  }
   return (
     `💼 *Balance (${ctx.month})*\n\n` +
     `• Ingresos: ${formatMoney(ctx.totalIncome, ctx.currency)}\n` +
@@ -330,12 +345,26 @@ function formatSummaryMessage(ctx: MonthlyContext) {
   const budgetPercent =
     ctx.totalVariableBudget > 0 ? Math.round((ctx.totalVariableSpent / ctx.totalVariableBudget) * 100) : 0
   const expectedPercent = Math.round((ctx.daysPassed / ctx.daysInMonth) * 100)
+  const totalSpent = ctx.totalVariableSpent + ctx.totalUnbudgeted
+  const remainingBudget = ctx.totalVariableBudget - totalSpent
   const merchants =
     ctx.topMerchants.length > 0
       ? `\n\nTop comercios:\n${ctx.topMerchants
           .map((m) => `• ${m.name}: ${formatMoney(m.amount, ctx.currency)} (${m.count})`)
           .join('\n')}`
       : ''
+
+  if (!ctx.hasIncome) {
+    return (
+      `📊 *Resumen ejecutivo (${ctx.month})*\n\n` +
+      `• Gastado: *${formatMoney(totalSpent, ctx.currency)}* (${budgetPercent}% del presupuesto variable)\n` +
+      `• Restante (presupuesto): ${formatMoney(remainingBudget, ctx.currency)}\n` +
+      `• Ritmo: ${budgetPercent}% vs esperado ~${expectedPercent}%\n` +
+      (ctx.totalUnbudgeted > 0 ? `• No presupuestado: ${formatMoney(ctx.totalUnbudgeted, ctx.currency)}\n` : '') +
+      `\nSiguiente paso: clasifica “no presupuestado” y ajusta presupuesto si se queda corto.` +
+      merchants
+    )
+  }
 
   return (
     `📊 *Resumen ejecutivo (${ctx.month})*\n\n` +
@@ -402,7 +431,7 @@ async function proposeExpenseForConfirmation(
       household_id: link.household_id,
       amount: parsed.amount,
       merchant: parsed.merchant,
-      description: parsed.description || text,
+      description: parsed.description || (parsed.merchant ? null : text),
       expense_date: today,
       payment_method: parsed.payment_method || 'unknown',
       source: 'api',
@@ -427,7 +456,8 @@ async function proposeExpenseForConfirmation(
   const preview =
     `📝 *Gasto detectado*\n\n` +
     `• Monto: ${formatMoney(parsed.amount)}\n` +
-    `• Comercio: ${parsed.merchant || 'Sin comercio'}\n` +
+    (parsed.merchant ? `• Comercio: ${parsed.merchant}\n` : '') +
+    (parsed.description && parsed.description !== text ? `• Descripción: ${parsed.description}\n` : '') +
     `• Fecha: ${today}\n` +
     (parsed.payment_method ? `• Pago: ${parsed.payment_method}\n` : '') +
     `\n¿Lo guardo?`
@@ -454,22 +484,37 @@ async function handleCallbackQuery(cb: TelegramCallbackQuery) {
   if (!action || !expenseId) return
 
   if (action === 'confirm') {
-    const { error } = await supabase.from('expenses').update({ status: 'confirmed' }).eq('id', expenseId)
+    const { data: updated, error } = await supabase
+      .from('expenses')
+      .update({ status: 'confirmed' })
+      .eq('id', expenseId)
+      .eq('status', 'pending')
+      .select('id')
     if (error) {
       await sendTelegramMessage(chatId, '❌ No pude confirmar el gasto. Intenta de nuevo.', { reply_markup: mainKeyboard(true) })
       return
     }
-    await sendTelegramMessage(chatId, '✅ *Gasto guardado.*', { reply_markup: mainKeyboard(true) })
+    // Idempotent: if it was already confirmed/cancelled, don't spam messages
+    if (updated && updated.length > 0) {
+      await sendTelegramMessage(chatId, '✅ *Gasto guardado.*', { reply_markup: mainKeyboard(true) })
+    }
     return
   }
 
   if (action === 'cancel') {
-    const { error } = await supabase.from('expenses').update({ status: 'cancelled' }).eq('id', expenseId)
+    const { data: updated, error } = await supabase
+      .from('expenses')
+      .update({ status: 'cancelled' })
+      .eq('id', expenseId)
+      .eq('status', 'pending')
+      .select('id')
     if (error) {
       await sendTelegramMessage(chatId, '❌ No pude cancelar el gasto. Intenta de nuevo.', { reply_markup: mainKeyboard(true) })
       return
     }
-    await sendTelegramMessage(chatId, 'Cancelado. No guardé ese gasto.', { reply_markup: mainKeyboard(true) })
+    if (updated && updated.length > 0) {
+      await sendTelegramMessage(chatId, 'Cancelado. No guardé ese gasto.', { reply_markup: mainKeyboard(true) })
+    }
   }
 }
 
@@ -708,12 +753,14 @@ async function analyzeWithAIWithContext(
     ? [
         `Mes: ${ctx.month} (día ${ctx.daysPassed}/${ctx.daysInMonth})`,
         `Moneda: ${ctx.currency}`,
-        `Ingresos: ${formatMoney(ctx.totalIncome, ctx.currency)}`,
+        ctx.hasIncome ? `Ingresos: ${formatMoney(ctx.totalIncome, ctx.currency)}` : null,
         `Fijos: ${formatMoney(ctx.totalFixed, ctx.currency)}`,
         `Variable presup.: ${formatMoney(ctx.totalVariableBudget, ctx.currency)}`,
         `Variable gastado: ${formatMoney(ctx.totalVariableSpent, ctx.currency)}`,
         ctx.totalUnbudgeted > 0 ? `No presupuestado: ${formatMoney(ctx.totalUnbudgeted, ctx.currency)}` : null,
-        `Balance real: ${formatMoney(ctx.availableReal, ctx.currency)}`,
+        ctx.hasIncome
+          ? `Balance real: ${formatMoney(ctx.availableReal, ctx.currency)}`
+          : `Presupuesto restante: ${formatMoney(ctx.totalVariableBudget - (ctx.totalVariableSpent + ctx.totalUnbudgeted), ctx.currency)}`,
       ]
         .filter(Boolean)
         .join('\n')

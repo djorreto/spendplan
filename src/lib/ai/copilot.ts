@@ -146,12 +146,24 @@ function buildContextSummary(ctx: FinancialContext): string {
   // Keep context short & executive (helps avoid long answers)
   lines.push(`Mes: ${ctx.month} (día ${ctx.daysPassed}/${ctx.daysInMonth})`)
   lines.push(`Moneda: ${ctx.currency}`)
-  lines.push(`Ingresos: $${ctx.totalIncome.toLocaleString('es-CL')}`)
+  const hasIncome = ctx.totalIncome > 0
+  if (hasIncome) {
+    lines.push(`Ingresos: $${ctx.totalIncome.toLocaleString('es-CL')}`)
+  } else {
+    lines.push(`Ingresos: (no configurados)`)
+  }
   lines.push(`Fijos: $${ctx.totalFixed.toLocaleString('es-CL')}`)
   lines.push(`Variable presup.: $${ctx.totalVariableBudget.toLocaleString('es-CL')}`)
   lines.push(`Variable gastado: $${ctx.totalVariableSpent.toLocaleString('es-CL')}`)
   if (ctx.totalUnbudgeted > 0) lines.push(`No presupuestado: $${ctx.totalUnbudgeted.toLocaleString('es-CL')}`)
-  lines.push(`Balance real: $${ctx.availableReal.toLocaleString('es-CL')}`)
+  const totalSpent = ctx.totalVariableSpent + ctx.totalUnbudgeted
+  const remainingBudget = ctx.totalVariableBudget - totalSpent
+  if (hasIncome) {
+    lines.push(`Balance real: $${ctx.availableReal.toLocaleString('es-CL')}`)
+  } else {
+    lines.push(`Gasto total mes: $${totalSpent.toLocaleString('es-CL')}`)
+    lines.push(`Presupuesto restante: $${remainingBudget.toLocaleString('es-CL')}`)
+  }
 
   const budgetPercent = ctx.totalVariableBudget > 0 ? Math.round((ctx.totalVariableSpent / ctx.totalVariableBudget) * 100) : 0
   const expectedPercent = Math.round((ctx.daysPassed / ctx.daysInMonth) * 100)

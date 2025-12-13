@@ -226,9 +226,11 @@ export default function InsightsPage() {
             `Has gastado $${totalSpent.toLocaleString('es-CL')} de tu presupuesto de $${totalBudgeted.toLocaleString('es-CL')} este mes`,
             `Llevas ${Math.round((totalSpent / totalBudgeted) * 100) || 0}% del presupuesto consumido`,
             `Se analizaron ${expensesSummary ? expensesSummary.split('\n').filter(Boolean).length : 0} gastos (mes ${currentMonth})`,
-            totalIncome > totalSpent 
-              ? `Balance positivo de $${(totalIncome - totalSpent).toLocaleString('es-CL')}`
-              : `Atención: gastos superan ingresos por $${(totalSpent - totalIncome).toLocaleString('es-CL')}`
+            totalIncome > 0
+              ? (totalIncome > totalSpent
+                  ? `Balance positivo de $${(totalIncome - totalSpent).toLocaleString('es-CL')}`
+                  : `Atención: gastos superan ingresos por $${(totalSpent - totalIncome).toLocaleString('es-CL')}`)
+              : 'Tip: si agregas ingresos (opcional), podrás ver balance disponible además del cumplimiento del presupuesto.'
           ],
           flags: totalSpent > totalBudgeted ? [{
             category_name: 'Presupuesto General',
