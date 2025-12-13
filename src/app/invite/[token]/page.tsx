@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/use-auth'
 import { useHousehold } from '@/hooks/use-household'
@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
+import { supabaseBrowser } from '@/lib/supabase'
 
 export default function InviteAcceptPage() {
   const params = useParams<{ token: string }>()
@@ -29,6 +30,7 @@ export default function InviteAcceptPage() {
   const [password, setPassword] = useState('')
   const [password2, setPassword2] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const acceptOnceRef = useRef(false)
 
   const inviteUrl = useMemo(() => {
     if (!token || typeof token !== 'string') return null
@@ -78,6 +80,17 @@ export default function InviteAcceptPage() {
     router.push('/app/dashboard')
   }
 
+  // Si ya está autenticado, aceptar una sola vez (evita loops/toasts duplicados)
+  useEffect(() => {
+    if (!isAuthenticated) return
+    if (!invite) return
+    if (!token || typeof token !== 'string') return
+    if (acceptOnceRef.current) return
+    acceptOnceRef.current = true
+    void doAccept()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated, invite, token])
+
   const handleCreatePassword = async () => {
     if (!invite) return
     if (!password || password.length < 6) {
@@ -100,6 +113,19 @@ export default function InviteAcceptPage() {
           addToast({ type: 'error', message: login.error.message || 'No se pudo iniciar sesión' })
           return
         }
+      } else {
+        // Si el proyecto requiere confirmación por email, signUp puede NO crear sesión.
+        // En ese caso, mandamos a login y volvemos a esta misma URL con ?next=...
+        const { data: { session } } = await supabaseBrowser().auth.getSession()
+        if (!session) {
+          addToast({
+            type: 'success',
+            title: 'Cuenta creada',
+            message: 'Revisa tu email para confirmar tu cuenta, luego inicia sesión para aceptar la invitación.',
+          })
+          router.push(`/login?next=/invite/${token}`)
+          return
+        }
       }
 
       // 3) Con sesión activa, aceptar invitación
@@ -111,13 +137,7 @@ export default function InviteAcceptPage() {
 
   if (loadingInvite || authLoading) return <LoadingPage />
   if (!invite) return <LoadingPage />
-
-  // Si ya está autenticado, aceptar directo
-  if (isAuthenticated) {
-    // fire and forget: page will navigate
-    void doAccept()
-    return <LoadingPage />
-  }
+  if (isAuthenticated) return <LoadingPage />
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4">

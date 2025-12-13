@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabaseBrowser } from '@/lib/supabase'
 import type { Household, HouseholdInvitation, HouseholdMembership, Profile } from '@/types'
-import { formatSupabaseError, logOp, startOp } from '@/lib/debug-log'
+import { formatSupabaseError, isLikelyDuplicateError, logOp, startOp } from '@/lib/debug-log'
 
 interface HouseholdState {
   households: Household[]
@@ -610,7 +610,8 @@ export function useHousehold() {
           invited_at: invitation.created_at,
         })
 
-      if (memberError) throw memberError
+      // Si ya era miembro (duplicado), no fallar: tratar como idempotente.
+      if (memberError && !isLikelyDuplicateError(memberError)) throw memberError
 
       // Marcar invitación como aceptada
       await supabase
@@ -625,7 +626,10 @@ export function useHousehold() {
       return { error: null }
     } catch (error) {
       console.error('Error accepting invitation:', error)
-      return { error: error instanceof Error ? error.message : 'Error al aceptar invitación' }
+      return {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        error: error instanceof Error ? error.message : (error as any)?.message || 'Error al aceptar invitación',
+      }
     }
   }, [supabase, loadHouseholds, loadInvitations, loadMembers])
 
