@@ -43,7 +43,7 @@ export function AppSidebar() {
     { icon: Wallet, label: 'Presupuesto', href: '/app/budget' },
     { icon: Receipt, label: 'Gastos', href: '/app/expenses' },
     { icon: Tags, label: 'Clasificar', href: '/app/classify' },
-    { icon: Upload, label: 'Importar', href: '/app/import' },
+    { icon: Upload, label: 'Exportar e importar', href: '/app/export-import' },
     { icon: Sparkles, label: 'Insights', href: '/app/insights' },
   ]
 

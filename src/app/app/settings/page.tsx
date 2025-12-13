@@ -483,9 +483,25 @@ export default function SettingsPage() {
                 <div className="p-4 bg-blue-50 rounded-lg space-y-2">
                   <p className="text-sm font-medium text-blue-800">📱 Instrucciones:</p>
                   <ol className="text-sm text-blue-700 list-decimal list-inside space-y-1">
-                    <li>Abre Telegram y busca <strong>@spendplan_cl_bot</strong></li>
-                    <li>Envía el comando: <code className="bg-blue-100 px-1 rounded">/vincular {telegramCode}</code></li>
-                    <li>¡Listo! Ya puedes enviar gastos</li>
+                    <li>Descarga Telegram (App Store / Google Play) y abre sesión.</li>
+                    <li>En Telegram, busca el chat <strong>@spendplan_cl_bot</strong> y toca <strong>Start / Iniciar</strong>.</li>
+                    <li>
+                      Pégale este código:
+                      <code className="bg-blue-100 px-1 rounded ml-1">{telegramCode}</code>
+                      <span className="ml-1">(también sirve</span>
+                      <code className="bg-blue-100 px-1 rounded ml-1">/vincular {telegramCode}</code>
+                      <span className="ml-1">).</span>
+                    </li>
+                    <li>Cuando te confirme, ya quedas vinculado.</li>
+                    <li>
+                      Cómo usarlo (ejemplos):
+                      <ul className="list-disc list-inside ml-4 mt-1 space-y-1">
+                        <li><strong>Registrar gasto:</strong> <code className="bg-blue-100 px-1 rounded">12990 en Jumbo</code></li>
+                        <li><strong>Balance:</strong> <code className="bg-blue-100 px-1 rounded">Balance</code></li>
+                        <li><strong>Resumen:</strong> <code className="bg-blue-100 px-1 rounded">Resumen</code></li>
+                      </ul>
+                    </li>
+                    <li>Tip: cuando registres un gasto, el bot te pedirá <strong>Confirmar</strong> antes de guardarlo.</li>
                   </ol>
                 </div>
               )}

@@ -37,7 +37,8 @@ import {
   Plus,
   Trash2,
   Lightbulb,
-  Receipt
+  Receipt,
+  Save
 } from 'lucide-react'
 import type { Expense, Category, CategorizationRule } from '@/types'
 
@@ -51,6 +52,10 @@ export default function ClassifyPage() {
   const [rules, setRules] = useState<CategorizationRule[]>([])
   const [processingId, setProcessingId] = useState<string | null>(null)
   const [aiSuggesting, setAiSuggesting] = useState(false)
+
+  // Pending changes: user picks categories, then saves in bulk
+  const [pendingCategoryByExpenseId, setPendingCategoryByExpenseId] = useState<Record<string, string>>({})
+  const pendingCount = Object.keys(pendingCategoryByExpenseId).length
   
   // Rule dialog
   const [ruleDialogOpen, setRuleDialogOpen] = useState(false)
@@ -94,6 +99,7 @@ export default function ClassifyPage() {
         .limit(50)
 
       setUnclassified(exps || [])
+      setPendingCategoryByExpenseId({})
 
       // Load rules
       const { data: rls } = await supabase
@@ -111,6 +117,47 @@ export default function ClassifyPage() {
     }
   }
 
+  const setPendingCategory = (expenseId: string, categoryId: string) => {
+    setPendingCategoryByExpenseId((prev) => ({ ...prev, [expenseId]: categoryId }))
+  }
+
+  const clearPendingCategory = (expenseId: string) => {
+    setPendingCategoryByExpenseId((prev) => {
+      const next = { ...prev }
+      delete next[expenseId]
+      return next
+    })
+  }
+
+  const savePending = async () => {
+    if (pendingCount === 0) return
+    const supabase = supabaseBrowser()
+    setAiSuggesting(true)
+
+    try {
+      const entries = Object.entries(pendingCategoryByExpenseId)
+      let saved = 0
+
+      for (const [expenseId, categoryId] of entries) {
+        const { error } = await supabase
+          .from('expenses')
+          .update({ category_id: categoryId })
+          .eq('id', expenseId)
+        if (error) throw error
+        saved++
+      }
+
+      setUnclassified((prev) => prev.filter((e) => !pendingCategoryByExpenseId[e.id]))
+      setPendingCategoryByExpenseId({})
+      addToast({ type: 'success', message: `${saved} gasto(s) guardados` })
+    } catch {
+      addToast({ type: 'error', message: 'Error al guardar clasificación' })
+    } finally {
+      setAiSuggesting(false)
+    }
+  }
+
+  // (Still used for auto-classify on high confidence)
   const classifyExpense = async (expenseId: string, categoryId: string) => {
     const supabase = supabaseBrowser()
     setProcessingId(expenseId)
@@ -167,6 +214,8 @@ export default function ClassifyPage() {
         if (result.confidence >= 0.8) {
           await classifyExpense(expense.id, result.category_id)
         } else {
+          // Pre-select suggestion, user saves with "Guardar"
+          setPendingCategory(expense.id, result.category_id)
           addToast({ 
             type: 'info', 
             title: 'Sugerencia de IA',
@@ -284,6 +333,10 @@ export default function ClassifyPage() {
           </p>
         </div>
         <div className="flex gap-2">
+          <Button onClick={savePending} disabled={pendingCount === 0 || aiSuggesting} className="hidden sm:inline-flex">
+            <Save className="mr-2 h-4 w-4" />
+            {aiSuggesting ? 'Guardando...' : `Guardar${pendingCount > 0 ? ` (${pendingCount})` : ''}`}
+          </Button>
           <Button variant="outline" onClick={applyRules} disabled={rules.length === 0}>
             <Tags className="mr-2 h-4 w-4" />
             Aplicar Reglas
@@ -343,12 +396,27 @@ export default function ClassifyPage() {
                           <div className="flex items-center gap-2">
                             <Lightbulb className="h-4 w-4" />
                             <span>Sugerencia IA: </span>
-                            <Badge variant="secondary">
+                            <Badge
+                              variant={pendingCategoryByExpenseId[expense.id] === expense.ai_category_suggestion ? 'default' : 'secondary'}
+                              className="cursor-pointer"
+                              onClick={() => setPendingCategory(expense.id, String(expense.ai_category_suggestion))}
+                            >
                               {categories.find(c => c.id === expense.ai_category_suggestion)?.name}
                             </Badge>
                             <span className="text-muted-foreground">
                               ({Math.round((expense.ai_confidence || 0) * 100)}% confianza)
                             </span>
+                            {pendingCategoryByExpenseId[expense.id] && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 ml-auto"
+                                onClick={() => clearPendingCategory(expense.id)}
+                                title="Quitar selección"
+                              >
+                                <X className="h-3 w-3" />
+                              </Button>
+                            )}
                           </div>
                         </div>
                       )}
@@ -357,9 +425,9 @@ export default function ClassifyPage() {
                         {categories.filter(c => c.name !== 'Sin clasificar').slice(0, 8).map((cat) => (
                           <Button
                             key={cat.id}
-                            variant="outline"
+                            variant={pendingCategoryByExpenseId[expense.id] === cat.id ? 'default' : 'outline'}
                             size="sm"
-                            onClick={() => classifyExpense(expense.id, cat.id)}
+                            onClick={() => setPendingCategory(expense.id, cat.id)}
                             className="text-xs"
                             disabled={processingId === expense.id}
                           >
@@ -376,6 +444,17 @@ export default function ClassifyPage() {
                 </div>
               )}
             </CardContent>
+            {!loading && unclassified.length > 0 && (
+              <CardFooter className="flex justify-between">
+                <p className="text-xs text-muted-foreground">
+                  Tip: usa “Sugerir con IA” y luego “Guardar” para aplicar en lote.
+                </p>
+                <Button onClick={savePending} disabled={pendingCount === 0 || aiSuggesting} className="sm:hidden">
+                  <Save className="mr-2 h-4 w-4" />
+                  {aiSuggesting ? 'Guardando...' : `Guardar${pendingCount > 0 ? ` (${pendingCount})` : ''}`}
+                </Button>
+              </CardFooter>
+            )}
           </Card>
         </div>
 
