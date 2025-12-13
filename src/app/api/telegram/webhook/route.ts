@@ -10,6 +10,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { 
   sendTelegramMessage, 
+  answerTelegramCallbackQuery,
+  editTelegramMessageReplyMarkup,
   parseExpenseFromText,
   formatExpenseResponse,
   type TelegramMessage 
@@ -20,7 +22,7 @@ export const runtime = 'nodejs'
 type TelegramCallbackQuery = {
   id: string
   from: { id: number; username?: string }
-  message?: { chat: { id: number } }
+  message?: { chat: { id: number }; message_id: number }
   data?: string
 }
 
@@ -476,12 +478,18 @@ async function proposeExpenseForConfirmation(
 
 async function handleCallbackQuery(cb: TelegramCallbackQuery) {
   const chatId = cb.message?.chat.id
+  const messageId = cb.message?.message_id
   const data = cb.data || ''
-  if (!chatId || !data) return
+  if (!chatId || !messageId || !data) return
 
   const supabase = getSupabase()
   const [action, expenseId] = data.split(':')
   if (!action || !expenseId) return
+
+  // Stop Telegram "loading…" immediately
+  await answerTelegramCallbackQuery(cb.id, { text: 'Listo' })
+  // Remove buttons so it can't be pressed again
+  await editTelegramMessageReplyMarkup(chatId, messageId, { inline_keyboard: [] })
 
   if (action === 'confirm') {
     const { data: updated, error } = await supabase
