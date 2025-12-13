@@ -22,7 +22,6 @@ const CACHE_TTL = 30000 // 30 segundos
 
 // Dedupe global: múltiples instancias del hook pueden montarse en paralelo
 let householdsInFlight: Promise<void> | null = null
-let lastHouseholdLoadStartedAt = 0
 
 // Demo mode helpers
 const DEMO_STORAGE_KEY = 'spendplan_demo_household'
@@ -66,13 +65,6 @@ export function useHousehold() {
     if (!force && householdsInFlight) {
       return householdsInFlight
     }
-
-    // Pequeño debounce solo para evitar ráfagas; NO cambia loading ni corta cargas reales
-    if (!force && lastHouseholdLoadStartedAt > 0 && now - lastHouseholdLoadStartedAt < 500) {
-      return
-    }
-
-    lastHouseholdLoadStartedAt = now
     lastHouseholdLoadRef.current = now
     console.log('🏠 Loading households...')
 

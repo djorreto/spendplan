@@ -18,7 +18,6 @@ let profileCache: { [userId: string]: Profile } = {}
 
 // Dedupe global para evitar check simultáneo entre múltiples instancias
 let authInFlight: Promise<void> | null = null
-let lastAuthStartedAt = 0
 
 // Demo mode helpers
 const DEMO_USER_KEY = 'spendplan_demo_user'
@@ -129,9 +128,6 @@ export function useAuth() {
       const now = Date.now()
       // Si ya hay un check en curso, reutilizarlo
       if (authInFlight) return authInFlight
-      if (lastAuthStartedAt > 0 && now - lastAuthStartedAt < 300) return
-
-      lastAuthStartedAt = now
       lastAuthCheckRef.current = now
       console.log('📋 Checking auth...')
       
