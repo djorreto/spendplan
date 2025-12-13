@@ -458,15 +458,18 @@ export default function ExpensesPage() {
   // Calculate total
   const totalFiltered = filteredExpenses.reduce((sum, e) => sum + e.amount, 0)
 
-  // Generate months - start from current month and go back 6 months
-  const months = Array.from({ length: 6 }, (_, i) => {
-    // Use local time to get correct month
-    const now = new Date()
-    const year = now.getFullYear()
-    const month = now.getMonth() - i
-    const date = new Date(year, month, 1)
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
-  })
+  // Generate months - include current month based on Chile timezone
+  const months = React.useMemo(() => {
+    // Get current date in Chile timezone
+    const chileTime = new Date().toLocaleString('en-US', { timeZone: 'America/Santiago' })
+    const now = new Date(chileTime)
+    const result = []
+    for (let i = 0; i < 6; i++) {
+      const date = new Date(now.getFullYear(), now.getMonth() - i, 1)
+      result.push(`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`)
+    }
+    return result
+  }, [])
 
   return (
     <div className="space-y-6">
