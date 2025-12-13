@@ -12,7 +12,7 @@ import { Logo } from '@/components/ui/logo'
 import { useToast } from '@/components/ui/toast'
 import { Loading } from '@/components/ui/loading'
 import { Eye, EyeOff, ArrowLeft, Mail, Lock, User } from 'lucide-react'
-import { PRIVATE_BETA_BLOCK_MESSAGE } from '@/lib/beta-allowlist'
+import { PRIVATE_BETA_BLOCK_MESSAGE, PRIVATE_BETA_CHECK_ERROR_MESSAGE } from '@/lib/beta-allowlist'
 
 type Mode = 'login' | 'signup' | 'forgot'
 
@@ -40,6 +40,8 @@ export default function LoginPage() {
     const blocked = searchParams.get('blocked')
     if (blocked === 'beta') {
       addToast({ type: 'error', message: PRIVATE_BETA_BLOCK_MESSAGE })
+    } else if (blocked === 'beta_error') {
+      addToast({ type: 'error', message: PRIVATE_BETA_CHECK_ERROR_MESSAGE })
     }
   }, [searchParams, addToast])
 

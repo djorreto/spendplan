@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { User, AuthError } from '@supabase/supabase-js'
 import { supabaseBrowser } from '@/lib/supabase'
-import { normalizeEmail, PRIVATE_BETA_BLOCK_MESSAGE } from '@/lib/beta-allowlist'
+import { normalizeEmail, PRIVATE_BETA_BLOCK_MESSAGE, PRIVATE_BETA_CHECK_ERROR_MESSAGE } from '@/lib/beta-allowlist'
 import type { Profile } from '@/types'
 
 interface AuthState {
@@ -20,7 +20,7 @@ let profileCache: { [userId: string]: Profile } = {}
 // Dedupe global para evitar check simultáneo entre múltiples instancias
 let authInFlight: Promise<void> | null = null
 
-type BetaCheckResult = { betaMode: boolean; allowed: boolean }
+type BetaCheckResult = { betaMode: boolean; allowed: boolean; error?: string }
 const allowlistCache = new Map<string, { value: BetaCheckResult; ts: number }>()
 const ALLOWLIST_CACHE_TTL_MS = 60_000
 
@@ -38,7 +38,14 @@ async function checkBetaAllowlist(email: string): Promise<BetaCheckResult> {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: e }),
     })
-    if (!res.ok) throw new Error(`beta check failed: ${res.status}`)
+    if (!res.ok) {
+      let msg = `beta check failed: ${res.status}`
+      try {
+        const j = await res.json()
+        if (j?.error) msg = String(j.error)
+      } catch {}
+      throw new Error(msg)
+    }
     const json = (await res.json()) as Partial<BetaCheckResult>
     const value: BetaCheckResult = {
       betaMode: !!json.betaMode,
@@ -48,7 +55,7 @@ async function checkBetaAllowlist(email: string): Promise<BetaCheckResult> {
     return value
   } catch (err) {
     // Fail closed for private beta.
-    const value: BetaCheckResult = { betaMode: true, allowed: false }
+    const value: BetaCheckResult = { betaMode: true, allowed: false, error: (err as any)?.message || 'beta_check_error' }
     allowlistCache.set(e, { value, ts: now })
     return value
   }
@@ -175,7 +182,7 @@ export function useAuth() {
             await supabase.auth.signOut().catch(() => {})
             if (isMounted) setState({ user: null, profile: null, loading: false, error: null, isDemoMode: false })
             if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
-              window.location.href = `/login?blocked=beta`
+              window.location.href = beta.error ? `/login?blocked=beta_error` : `/login?blocked=beta`
             }
             return
           }
@@ -221,7 +228,7 @@ export function useAuth() {
             await supabase.auth.signOut().catch(() => {})
             if (isMounted) setState(prev => ({ ...prev, user: null, profile: null, loading: false, isDemoMode: false }))
             if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
-              window.location.href = `/login?blocked=beta`
+              window.location.href = beta.error ? `/login?blocked=beta_error` : `/login?blocked=beta`
             }
             return
           }
@@ -265,7 +272,10 @@ export function useAuth() {
       const beta = await checkBetaAllowlist(data.user?.email || '')
       if (beta.betaMode && !beta.allowed) {
         await supabase.auth.signOut().catch(() => {})
-        return { user: null, error: { message: PRIVATE_BETA_BLOCK_MESSAGE } as AuthError }
+        return {
+          user: null,
+          error: { message: beta.error ? PRIVATE_BETA_CHECK_ERROR_MESSAGE : PRIVATE_BETA_BLOCK_MESSAGE } as AuthError,
+        }
       }
 
       // Actualizar estado con el usuario (sin esperar profile)
@@ -292,7 +302,10 @@ export function useAuth() {
     const normalized = normalizeEmail(email)
     const beta = await checkBetaAllowlist(normalized)
     if (beta.betaMode && !beta.allowed) {
-      return { user: null, error: { message: PRIVATE_BETA_BLOCK_MESSAGE } as AuthError }
+      return {
+        user: null,
+        error: { message: beta.error ? PRIVATE_BETA_CHECK_ERROR_MESSAGE : PRIVATE_BETA_BLOCK_MESSAGE } as AuthError,
+      }
     }
 
     const { data, error } = await supabase.auth.signUp({

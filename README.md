@@ -59,6 +59,7 @@ En **Supabase Dashboard > SQL Editor**, ejecuta en orden:
 3. `database/migrations/003-spendplan-seeds.sql` - Categorías por defecto
 4. `database/migrations/005-telegram-session.sql` - Sesión conversacional Telegram
 5. `database/migrations/006-beta-allowlist.sql` - Beta privada (allowlist)
+6. `database/migrations/007-beta-allowlist-rpc.sql` - RPC seguro (beta)
 
 ---
 

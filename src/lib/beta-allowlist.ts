@@ -1,6 +1,8 @@
 export const PRIVATE_BETA_BLOCK_MESSAGE =
   'Debes contar con una invitación directa de SpendPlan. Ponte en contacto con nosotros para tener acceso.'
 
+export const PRIVATE_BETA_CHECK_ERROR_MESSAGE = 'Error verificando invitación. Intenta nuevamente.'
+
 export function normalizeEmail(email: string): string {
   return String(email || '').trim().toLowerCase()
 }
