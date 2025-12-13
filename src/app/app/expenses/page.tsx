@@ -227,7 +227,7 @@ export default function ExpensesPage() {
         .from('expenses')
         .select(`
           *,
-          category:categories(*)
+          category:categories!expenses_category_id_fkey(*)
         `)
         .eq('household_id', currentHousehold.id)
         .gte('expense_date', `${filterMonth}-01`)

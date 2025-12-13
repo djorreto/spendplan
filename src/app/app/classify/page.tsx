@@ -96,7 +96,7 @@ export default function ClassifyPage() {
       // Load rules
       const { data: rls } = await supabase
         .from('categorization_rules')
-        .select('*, category:categories(name)')
+        .select('*, category:categories!expenses_category_id_fkey(name)')
         .eq('household_id', currentHousehold.id)
         .eq('is_active', true)
         .order('priority', { ascending: false })

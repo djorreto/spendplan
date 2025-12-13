@@ -184,7 +184,7 @@ export default function DashboardPage() {
         const supabase = supabaseBrowser()
         const { data: expenses, error: expensesError } = await supabase
           .from('expenses')
-          .select('*, category:categories(name)')
+          .select('*, category:categories!expenses_category_id_fkey(name)')
           .eq('household_id', currentHousehold.id)
           .gte('expense_date', startOfMonth)
           .order('expense_date', { ascending: false })
