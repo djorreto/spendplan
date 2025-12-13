@@ -16,6 +16,10 @@ interface AuthState {
 // Cache para evitar múltiples llamadas
 let profileCache: { [userId: string]: Profile } = {}
 
+// Dedupe global para evitar check simultáneo entre múltiples instancias
+let authInFlight: Promise<void> | null = null
+let lastAuthStartedAt = 0
+
 // Demo mode helpers
 const DEMO_USER_KEY = 'spendplan_demo_user'
 const DEMO_PROFILE_KEY = 'spendplan_demo_profile'
@@ -122,20 +126,17 @@ export function useAuth() {
     let isMounted = true
     
     const checkUser = async () => {
-      // Evitar múltiples llamadas en corto tiempo (pero permitir la primera)
       const now = Date.now()
-      if (lastAuthCheckRef.current > 0 && now - lastAuthCheckRef.current < 2000) {
-        console.log('📋 Skipping auth check (too soon)')
-        // IMPORTANTE: no dejar loading=true, reutilizar el estado actual
-        if (isMounted) {
-          setState(prev => ({ ...prev, loading: false }))
-        }
-        return
-      }
+      // Si ya hay un check en curso, reutilizarlo
+      if (authInFlight) return authInFlight
+      if (lastAuthStartedAt > 0 && now - lastAuthStartedAt < 300) return
+
+      lastAuthStartedAt = now
       lastAuthCheckRef.current = now
       console.log('📋 Checking auth...')
       
-      try {
+      const run = (async () => {
+        try {
         // Primero verificar si hay usuario demo
         const demoUser = getDemoUser()
         const demoProfile = getDemoProfile()
@@ -164,7 +165,7 @@ export function useAuth() {
             setState({ user: null, profile: null, loading: false, error: null, isDemoMode: false })
           }
         }
-      } catch (error) {
+        } catch (error) {
         console.error('Auth check error:', error)
         if (isMounted) {
           // Verificar si hay usuario demo como fallback
@@ -177,6 +178,14 @@ export function useAuth() {
             setState({ user: null, profile: null, loading: false, error: null, isDemoMode: false })
           }
         }
+        }
+      })()
+
+      authInFlight = run
+      try {
+        await run
+      } finally {
+        authInFlight = null
       }
     }
 

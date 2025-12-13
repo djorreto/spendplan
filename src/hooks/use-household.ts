@@ -20,6 +20,10 @@ interface HouseholdState {
 let householdCache: { households: Household[], timestamp: number } | null = null
 const CACHE_TTL = 30000 // 30 segundos
 
+// Dedupe global: múltiples instancias del hook pueden montarse en paralelo
+let householdsInFlight: Promise<void> | null = null
+let lastHouseholdLoadStartedAt = 0
+
 // Demo mode helpers
 const DEMO_STORAGE_KEY = 'spendplan_demo_household'
 
@@ -57,16 +61,26 @@ export function useHousehold() {
 
   // Cargar hogares del usuario
   const loadHouseholds = useCallback(async (force = false) => {
-    // Debounce: evitar múltiples llamadas (pero permitir la primera)
     const now = Date.now()
-    if (!force && lastHouseholdLoadRef.current > 0 && now - lastHouseholdLoadRef.current < 2000) {
-      console.log('🏠 Skipping household load (too soon)')
-      // IMPORTANTE: no dejar loading=true
-      setState(prev => ({ ...prev, loading: false }))
+    // Si ya hay una carga en curso, reutilizarla (evita loops y “skips” peligrosos)
+    if (!force && householdsInFlight) {
+      return householdsInFlight
+    }
+
+    // Pequeño debounce solo para evitar ráfagas; NO cambia loading ni corta cargas reales
+    if (!force && lastHouseholdLoadStartedAt > 0 && now - lastHouseholdLoadStartedAt < 500) {
       return
     }
+
+    lastHouseholdLoadStartedAt = now
     lastHouseholdLoadRef.current = now
     console.log('🏠 Loading households...')
+
+    // Marcar loading solo cuando realmente vamos a cargar
+    setState(prev => ({ ...prev, loading: true }))
+
+    const op = startOp('household.loadHouseholds', { force })
+    const run = (async () => {
     
     try {
       // Primero verificar si hay un hogar demo guardado
@@ -170,6 +184,7 @@ export function useHousehold() {
       }
     } catch (error) {
       console.error('Error loading households:', error)
+      logOp(op, 'error', 'load failed', 'loadHouseholds', { error: formatSupabaseError(error) })
       
       // Fallback a demo mode
       const demoHousehold = getDemoHousehold()
@@ -200,7 +215,16 @@ export function useHousehold() {
         error: 'Error al cargar hogares',
       }))
     }
-  }, [supabase])
+    finally {
+      // Terminar carga (solo si no entramos por returns anticipados)
+      setState(prev => ({ ...prev, loading: false }))
+      householdsInFlight = null
+    }
+    })()
+
+    householdsInFlight = run
+    return run
+  }, [supabase, loadMembers, loadInvitations])
 
   // Cargar hogares al montar / cuando cambie sesión
   useEffect(() => {
