@@ -51,14 +51,15 @@ export function useHousehold() {
   const supabase = supabaseBrowser()
 
   // Cargar hogares del usuario
-  const loadHouseholds = useCallback(async () => {
-    // Debounce: evitar múltiples llamadas
+  const loadHouseholds = useCallback(async (force = false) => {
+    // Debounce: evitar múltiples llamadas (pero permitir la primera)
     const now = Date.now()
-    if (now - lastHouseholdLoad < 2000) {
+    if (!force && lastHouseholdLoad > 0 && now - lastHouseholdLoad < 2000) {
       console.log('🏠 Skipping household load (too soon)')
       return
     }
     lastHouseholdLoad = now
+    console.log('🏠 Loading households...')
     
     try {
       // Primero verificar si hay un hogar demo guardado

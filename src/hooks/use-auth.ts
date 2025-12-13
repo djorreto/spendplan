@@ -120,13 +120,14 @@ export function useAuth() {
     let isMounted = true
     
     const checkUser = async () => {
-      // Evitar múltiples llamadas en corto tiempo
+      // Evitar múltiples llamadas en corto tiempo (pero permitir la primera)
       const now = Date.now()
-      if (now - lastAuthCheck < 2000) {
+      if (lastAuthCheck > 0 && now - lastAuthCheck < 2000) {
         console.log('📋 Skipping auth check (too soon)')
         return
       }
       lastAuthCheck = now
+      console.log('📋 Checking auth...')
       
       try {
         // Primero verificar si hay usuario demo
