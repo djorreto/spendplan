@@ -363,6 +363,23 @@ export default function DashboardPage() {
     }
   }
 
+  // NOTE: These memos must be declared before any early return (React hooks rule).
+  const spendRows = useMemo(() => {
+    const base = data?.spendByUser || []
+    if (!includeFixedInPeople) return base
+    const fixed = data?.totalFixed || 0
+    if (fixed <= 0) return base
+    return [
+      ...base,
+      { id: 'household-fixed', name: 'Hogar (fijos)', amount: fixed, count: 0, avatar_url: null },
+    ].sort((a, b) => b.amount - a.amount)
+  }, [data?.spendByUser, data?.totalFixed, includeFixedInPeople])
+
+  const maxSpend = useMemo(() => {
+    const vals = spendRows.map((r) => r.amount)
+    return vals.length ? Math.max(...vals) : 0
+  }, [spendRows])
+
   if (loading) {
     return (
       <div className="space-y-6 max-w-2xl mx-auto">
@@ -487,22 +504,6 @@ export default function DashboardPage() {
   
   const status = getStatus()
   const StatusIcon = status.icon
-
-  const spendRows = useMemo(() => {
-    const base = data?.spendByUser || []
-    if (!includeFixedInPeople) return base
-    const fixed = data?.totalFixed || 0
-    if (fixed <= 0) return base
-    return [
-      ...base,
-      { id: 'household-fixed', name: 'Hogar (fijos)', amount: fixed, count: 0, avatar_url: null },
-    ].sort((a, b) => b.amount - a.amount)
-  }, [data?.spendByUser, data?.totalFixed, includeFixedInPeople])
-
-  const maxSpend = useMemo(() => {
-    const vals = spendRows.map((r) => r.amount)
-    return vals.length ? Math.max(...vals) : 0
-  }, [spendRows])
 
   return (
     <div className="space-y-6 max-w-2xl mx-auto">
