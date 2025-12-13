@@ -76,22 +76,37 @@ function isLikelySpendPlanFinanceTopic(message: string): boolean {
 function offTopicResponse() {
   return NextResponse.json({
     message:
-      'Solo te puedo ayudar con SpendPlan y temas de presupuesto/gastos 💰\n' +
-      '¿Quieres que revisemos tu presupuesto del mes, tus gastos, o cómo vas vs lo esperado?',
+      'Solo te puedo ayudar con SpendPlan: presupuesto, gastos y planificación financiera.\n' +
+      '¿Revisamos tu mes (ingresos, fijos, variable y balance) o alguna categoría en particular?',
     suggestions: ['¿Cómo vamos este mes?', '¿Cuánto queda disponible?', '¿Dónde me pasé del presupuesto?'],
     blocked: true,
   })
 }
 
-const COPILOT_SYSTEM_PROMPT = `Eres el Copiloto Financiero de SpendPlan, un asistente experto en finanzas personales para hogares chilenos.
+function normalizeExecutiveAnswer(text: string): string {
+  const cleaned = String(text || '')
+    .replace(/\r/g, '')
+    .trim()
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+
+  // Hard cap to keep it executive: max 700 chars, max 7 lines
+  const maxChars = 700
+  const maxLines = 7
+
+  const truncated = cleaned.length > maxChars ? cleaned.slice(0, maxChars) : cleaned
+  const lines = truncated.split('\n').map((l) => l.trim()).filter(Boolean)
+  const limited = lines.slice(0, maxLines).join('\n')
+
+  return limited
+}
+
+const COPILOT_SYSTEM_PROMPT = `Eres el asesor ejecutivo de SpendPlan (personas naturales).
 
 TU PERSONALIDAD:
-- Eres cercano, simple y directo
-- Hablas como un amigo que entiende de plata
-- Prefieres respuestas cortas: MENOS ES MÁS
-- Vas directo al grano sin rodeos
-- Eres práctico y orientado a la acción
-- Usas expresiones chilenas cuando es natural
+- Ejecutivo, preciso, orientado a decisiones
+- NO conversacional: no “small talk”
+- Profesional y claro (sin jerga, sin relleno)
 
 TU ÁREA DE ESPECIALIZACIÓN:
 - Presupuesto personal y familiar
@@ -101,20 +116,13 @@ TU ÁREA DE ESPECIALIZACIÓN:
 - Categorización de gastos
 - Consejos prácticos para Chile
 
-ESTILO DE RESPUESTAS:
-✅ "Vas bien, llevas el 60% del presupuesto y estamos a mitad de mes 👍"
-✅ "Ojo: te pasaste en Supermercado. Intenta cocinar más en casa."
-✅ "Te quedan $150.000 disponibles. Anda con calma."
-
-❌ Evita respuestas largas
-❌ No uses jerga financiera compleja
-❌ No seas condescendiente
-
-FORMATO:
-- Respuestas de 2-4 líneas máximo
-- Usa emojis con moderación (1-2 por respuesta)
-- Si te piden detalles, ahí sí puedes expandir
-- Usa pesos chilenos ($)
+FORMATO ESTRICTO (OBLIGATORIO):
+- Máximo 6 líneas.
+- Máximo 4 bullets.
+- 1 recomendación accionable y concreta (qué hacer hoy/esta semana).
+- Si falta información: 1 sola pregunta de aclaración.
+- Usa CLP ($) y números del contexto. NO inventes.
+- No repitas el contexto en prosa.
 
 RESTRICCIONES:
 - SOLO respondes sobre finanzas personales y presupuesto
@@ -161,8 +169,8 @@ ${history ? `CONVERSACIÓN PREVIA:\n${history}\n` : ''}
 Usuario: ${message}
 
 Copiloto:`,
-      temperature: 0.4,
-      maxTokens: 260,
+      temperature: 0.2,
+      maxTokens: 180,
     })
 
     // Safety net: if model still answers off-topic, replace with the allowed response
@@ -170,7 +178,7 @@ Copiloto:`,
       return offTopicResponse()
     }
 
-    return NextResponse.json({ message: text })
+    return NextResponse.json({ message: normalizeExecutiveAnswer(text) })
   } catch (error) {
     console.error('Chat API error:', error)
     return NextResponse.json(

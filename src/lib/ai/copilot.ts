@@ -135,58 +135,33 @@ export async function getCopilotResponse(
  */
 function buildContextSummary(ctx: FinancialContext): string {
   const lines: string[] = []
-  
-  lines.push(`📅 Mes: ${ctx.month} (día ${ctx.daysPassed} de ${ctx.daysInMonth})`)
-  lines.push(`💰 Ingresos del mes: $${ctx.totalIncome.toLocaleString('es-CL')}`)
-  lines.push(`🔒 Gastos fijos: $${ctx.totalFixed.toLocaleString('es-CL')}`)
-  lines.push(`📊 Presupuesto variable: $${ctx.totalVariableBudget.toLocaleString('es-CL')}`)
-  lines.push(`💸 Gasto variable real: $${ctx.totalVariableSpent.toLocaleString('es-CL')}`)
-  
-  if (ctx.totalUnbudgeted > 0) {
-    lines.push(`⚠️ Gastos no presupuestados: $${ctx.totalUnbudgeted.toLocaleString('es-CL')}`)
-  }
-  
-  lines.push(`✅ Balance disponible real: $${ctx.availableReal.toLocaleString('es-CL')}`)
-  
-  // Budget compliance
-  const budgetPercent = ctx.totalVariableBudget > 0 
-    ? Math.round((ctx.totalVariableSpent / ctx.totalVariableBudget) * 100) 
-    : 0
+
+  // Keep context short & executive (helps avoid long answers)
+  lines.push(`Mes: ${ctx.month} (día ${ctx.daysPassed}/${ctx.daysInMonth})`)
+  lines.push(`Moneda: ${ctx.currency}`)
+  lines.push(`Ingresos: $${ctx.totalIncome.toLocaleString('es-CL')}`)
+  lines.push(`Fijos: $${ctx.totalFixed.toLocaleString('es-CL')}`)
+  lines.push(`Variable presup.: $${ctx.totalVariableBudget.toLocaleString('es-CL')}`)
+  lines.push(`Variable gastado: $${ctx.totalVariableSpent.toLocaleString('es-CL')}`)
+  if (ctx.totalUnbudgeted > 0) lines.push(`No presupuestado: $${ctx.totalUnbudgeted.toLocaleString('es-CL')}`)
+  lines.push(`Balance real: $${ctx.availableReal.toLocaleString('es-CL')}`)
+
+  const budgetPercent = ctx.totalVariableBudget > 0 ? Math.round((ctx.totalVariableSpent / ctx.totalVariableBudget) * 100) : 0
   const expectedPercent = Math.round((ctx.daysPassed / ctx.daysInMonth) * 100)
-  lines.push(`📈 Uso presupuesto variable: ${budgetPercent}% (esperado ~${expectedPercent}% del mes)`)
-  
-  // Over budget categories
+  lines.push(`Uso variable: ${budgetPercent}% (esperado ~${expectedPercent}%)`)
+
   if (ctx.categoriesOverBudget.length > 0) {
-    lines.push('\n🔴 Categorías sobre presupuesto:')
-    ctx.categoriesOverBudget.slice(0, 5).forEach(cat => {
-      lines.push(`  - ${cat.name}: $${cat.spent.toLocaleString('es-CL')} de $${cat.budgeted.toLocaleString('es-CL')} (+${Math.round(cat.percentage - 100)}%)`)
+    lines.push(`Sobre presupuesto (top):`)
+    ctx.categoriesOverBudget.slice(0, 3).forEach((cat) => {
+      lines.push(`- ${cat.name}: $${cat.spent.toLocaleString('es-CL')}/$${cat.budgeted.toLocaleString('es-CL')} (${Math.round(cat.percentage)}%)`)
     })
   }
-  
-  // Top merchants
+
   if (ctx.topMerchants.length > 0) {
-    lines.push('\n🏪 Principales comercios:')
-    ctx.topMerchants.slice(0, 5).forEach(m => {
-      lines.push(`  - ${m.name}: $${m.amount.toLocaleString('es-CL')} (${m.count} compras)`)
-    })
+    const m = ctx.topMerchants[0]
+    lines.push(`Comercio #1: ${m.name} $${m.amount.toLocaleString('es-CL')} (${m.count})`)
   }
-  
-  // Uncategorized
-  if (ctx.uncategorizedExpenses.length > 0) {
-    lines.push(`\n❓ Gastos sin categoría: ${ctx.uncategorizedExpenses.length} gastos`)
-    ctx.uncategorizedExpenses.slice(0, 3).forEach(e => {
-      lines.push(`  - ${e.description || 'Sin descripción'}: $${e.amount.toLocaleString('es-CL')}`)
-    })
-  }
-  
-  // Recent expenses
-  if (ctx.recentExpenses.length > 0) {
-    lines.push('\n🧾 Últimos gastos:')
-    ctx.recentExpenses.slice(0, 5).forEach(e => {
-      lines.push(`  - ${e.date}: ${e.description} - $${e.amount.toLocaleString('es-CL')} (${e.category})`)
-    })
-  }
-  
+
   return lines.join('\n')
 }
 
