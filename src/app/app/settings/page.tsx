@@ -125,9 +125,16 @@ export default function SettingsPage() {
   }
 
   const handleGenerateTelegramCode = async () => {
+    if (!profile?.id || !currentHousehold?.id) {
+      addToast({ type: 'error', message: 'Error: No se pudo obtener tu información' })
+      return
+    }
+    
     setGeneratingCode(true)
     try {
-      const response = await fetch('/api/telegram/webhook?action=generate_code')
+      const response = await fetch(
+        `/api/telegram/webhook?action=generate_code&user_id=${profile.id}&household_id=${currentHousehold.id}`
+      )
       const data = await response.json()
       if (data.code) {
         setTelegramCode(data.code)

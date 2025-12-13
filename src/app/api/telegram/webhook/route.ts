@@ -3,13 +3,13 @@
  * 📱 TELEGRAM WEBHOOK
  * ========================================
  * Recibe mensajes de Telegram y los procesa
- * Reutiliza el mismo pipeline de OCR y Groq
+ * Usa Supabase para persistencia
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
 import { 
   sendTelegramMessage, 
-  downloadTelegramFile,
   parseExpenseFromText,
   formatExpenseResponse,
   type TelegramMessage 
@@ -17,66 +17,50 @@ import {
 
 export const runtime = 'nodejs'
 
-// In-memory storage for pending expenses (in production, use Redis or DB)
-const pendingExpenses = new Map<number, {
-  amount: number | null
-  merchant: string | null
-  date: string | null
-  category: string | null
-  payment_method: string | null
-  raw_text?: string
-  created_at: number
-}>()
-
-// In-memory storage for telegram links (in production, use DB)
-const telegramLinks = new Map<number, {
-  household_id: string
-  user_id: string
-}>()
-
-// Verification codes waiting to be confirmed
-const pendingVerifications = new Map<string, {
-  telegram_user_id: number
-  telegram_username?: string
-  expires_at: number
-}>()
+// Supabase client for server-side
+function getSupabase() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
+}
 
 export async function POST(req: NextRequest) {
   try {
     const update = await req.json()
     
-    // Handle message
     if (update.message) {
       await handleMessage(update.message)
-    }
-    
-    // Handle callback query (button clicks)
-    if (update.callback_query) {
-      await handleCallbackQuery(update.callback_query)
     }
     
     return NextResponse.json({ ok: true })
   } catch (error) {
     console.error('Telegram webhook error:', error)
-    return NextResponse.json({ ok: true }) // Always return 200 to Telegram
+    return NextResponse.json({ ok: true })
   }
 }
 
 async function handleMessage(message: TelegramMessage) {
   const chatId = message.chat.id
-  const userId = message.from.id
+  const odId = message.from.id
   const text = message.text || ''
+  const supabase = getSupabase()
   
   // Check if user is linked
-  const link = telegramLinks.get(userId)
+  const { data: link } = await supabase
+    .from('telegram_links')
+    .select('household_id, user_id')
+    .eq('telegram_user_id', odId)
+    .not('linked_at', 'is', null)
+    .single()
   
-  // Handle commands (some work without linking)
+  // Handle commands
   if (text.startsWith('/')) {
-    await handleCommand(chatId, userId, text, link)
+    await handleCommand(chatId, odId, text, link, message.from.username)
     return
   }
   
-  // User not linked - require linking first
+  // User not linked
   if (!link) {
     await sendTelegramMessage(chatId, 
       '👋 ¡Hola! Soy el bot de SpendPlan.\n\n' +
@@ -89,24 +73,19 @@ async function handleMessage(message: TelegramMessage) {
     return
   }
   
-  // Handle photo (receipt)
-  if (message.photo && message.photo.length > 0) {
-    await handlePhoto(chatId, userId, message.photo, link)
-    return
-  }
-  
   // Handle text expense
   if (text) {
-    await handleTextExpense(chatId, userId, text)
+    await handleTextExpense(chatId, odId, text, link)
     return
   }
 }
 
 async function handleCommand(
   chatId: number, 
-  userId: number, 
+  odId: number, 
   text: string,
-  link: { household_id: string; user_id: string } | undefined
+  link: { household_id: string; user_id: string } | null,
+  username?: string
 ) {
   const [command, ...args] = text.split(' ')
   
@@ -132,33 +111,7 @@ async function handleCommand(
         )
         return
       }
-      await handleVerification(chatId, userId, args[0], {
-        first_name: '', // Will be filled from message.from
-        username: undefined
-      })
-      break
-      
-    case '/confirmar':
-      if (!link) {
-        await sendTelegramMessage(chatId, '❌ Primero vincula tu cuenta con /vincular')
-        return
-      }
-      await confirmPendingExpense(chatId, userId, link)
-      break
-      
-    case '/cancelar':
-      pendingExpenses.delete(userId)
-      await sendTelegramMessage(chatId, '❌ Gasto descartado')
-      break
-      
-    case '/editar':
-      await sendTelegramMessage(chatId,
-        '✏️ Para editar, envía el dato corregido:\n\n' +
-        '`monto 15000`\n' +
-        '`comercio Jumbo`\n' +
-        '`fecha 2024-12-11`\n\n' +
-        'Luego usa /confirmar para guardar'
-      )
+      await handleVerification(chatId, odId, args[0].toUpperCase(), username)
       break
       
     case '/estado':
@@ -166,7 +119,12 @@ async function handleCommand(
         await sendTelegramMessage(chatId, '❌ Primero vincula tu cuenta con /vincular')
         return
       }
-      await sendMonthSummary(chatId, link)
+      await sendTelegramMessage(chatId,
+        '📊 *Resumen del mes*\n\n' +
+        'Para ver el resumen completo con gráficos,\n' +
+        'visita SpendPlan web → Resumen\n\n' +
+        '💡 Tip: Usa /ia ¿cómo voy este mes? para un análisis rápido'
+      )
       break
       
     case '/ia':
@@ -175,19 +133,15 @@ async function handleCommand(
         await sendTelegramMessage(chatId, '❌ Primero vincula tu cuenta con /vincular')
         return
       }
-      await analyzeWithAI(chatId, userId, args.join(' '))
+      await analyzeWithAI(chatId, args.join(' '))
       break
       
     case '/ayuda':
     case '/help':
       await sendTelegramMessage(chatId,
         '📚 *Comandos disponibles:*\n\n' +
-        '📸 *Enviar foto* - Escanear boleta con OCR\n' +
         '💬 *Texto* - "Gasto 12.990 en Jumbo"\n\n' +
         '/vincular CODIGO - Vincular cuenta\n' +
-        '/confirmar - Guardar gasto pendiente\n' +
-        '/cancelar - Descartar gasto\n' +
-        '/editar - Modificar datos\n' +
         '/estado - Resumen del mes\n' +
         '/ia PREGUNTA - Consultar copiloto IA\n' +
         '/ayuda - Ver este mensaje'
@@ -199,61 +153,64 @@ async function handleCommand(
   }
 }
 
-async function handlePhoto(
+async function handleVerification(
   chatId: number,
-  userId: number,
-  photos: TelegramMessage['photo'],
-  link: { household_id: string; user_id: string } | undefined
+  odId: number,
+  code: string,
+  username?: string
 ) {
-  if (!link) {
-    await sendTelegramMessage(chatId, '❌ Primero vincula tu cuenta con /vincular')
+  const supabase = getSupabase()
+  
+  // Find pending verification code
+  const { data: pending } = await supabase
+    .from('telegram_links')
+    .select('*')
+    .eq('verification_code', code)
+    .is('linked_at', null)
+    .gt('code_expires_at', new Date().toISOString())
+    .single()
+  
+  if (!pending) {
+    await sendTelegramMessage(chatId,
+      '❌ Código no válido o expirado.\n\n' +
+      'Genera un nuevo código en SpendPlan web → Configuración → Telegram'
+    )
     return
   }
   
-  await sendTelegramMessage(chatId, '📷 Procesando imagen...')
-  
-  // Get largest photo
-  const photo = photos![photos!.length - 1]
-  
-  try {
-    // Download photo
-    const imageBuffer = await downloadTelegramFile(photo.file_id)
-    if (!imageBuffer) {
-      await sendTelegramMessage(chatId, '❌ No pude descargar la imagen. Intenta de nuevo.')
-      return
-    }
-    
-    // Convert to base64 for OCR API
-    const base64Image = imageBuffer.toString('base64')
-    
-    // Call OCR API (same as web)
-    const ocrResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/ai/ocr`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        rawText: `[Image to be processed - base64 length: ${base64Image.length}]`,
-        // Note: In a real implementation, you would run tesseract.js server-side
-        // or use a separate OCR service. For now, we'll ask user to retry on web.
-      })
+  // Link the user
+  const { error } = await supabase
+    .from('telegram_links')
+    .update({
+      telegram_user_id: odId,
+      telegram_username: username,
+      linked_at: new Date().toISOString(),
+      verification_code: null,
+      code_expires_at: null
     })
-    
-    // For now, since tesseract.js runs client-side, we'll provide a simplified flow
-    await sendTelegramMessage(chatId,
-      '📷 *Imagen recibida*\n\n' +
-      'El OCR completo funciona mejor en la web.\n\n' +
-      '¿Quieres ingresar los datos manualmente?\n' +
-      'Envía: `monto CANTIDAD en COMERCIO`\n\n' +
-      'Ejemplo: `15990 en Jumbo`'
-    )
-    
-  } catch (error) {
-    console.error('Photo processing error:', error)
-    await sendTelegramMessage(chatId, '❌ Error al procesar la imagen. Intenta de nuevo.')
+    .eq('id', pending.id)
+  
+  if (error) {
+    console.error('Error linking telegram:', error)
+    await sendTelegramMessage(chatId, '❌ Error al vincular. Intenta de nuevo.')
+    return
   }
+  
+  await sendTelegramMessage(chatId,
+    '✅ *¡Cuenta vinculada correctamente!*\n\n' +
+    'Ahora puedes:\n' +
+    '💬 Escribir gastos: "12990 en Jumbo"\n' +
+    '📊 Ver estado: /estado\n' +
+    '🤖 Consultar IA: /ia ¿cómo voy este mes?'
+  )
 }
 
-async function handleTextExpense(chatId: number, userId: number, text: string) {
-  // Parse expense from text
+async function handleTextExpense(
+  chatId: number, 
+  odId: number, 
+  text: string,
+  link: { household_id: string; user_id: string }
+) {
   const parsed = parseExpenseFromText(text)
   
   if (!parsed.amount) {
@@ -267,19 +224,29 @@ async function handleTextExpense(chatId: number, userId: number, text: string) {
     return
   }
   
-  // Store pending expense
+  const supabase = getSupabase()
   const today = new Date().toISOString().split('T')[0]
-  pendingExpenses.set(userId, {
-    amount: parsed.amount,
-    merchant: parsed.merchant,
-    date: today,
-    category: null, // Will be suggested by AI if requested
-    payment_method: parsed.payment_method,
-    raw_text: text,
-    created_at: Date.now()
-  })
   
-  // Send confirmation
+  // Save expense to database
+  const { error } = await supabase
+    .from('expenses')
+    .insert({
+      household_id: link.household_id,
+      amount: parsed.amount,
+      merchant: parsed.merchant,
+      description: parsed.description || text,
+      expense_date: today,
+      payment_method: parsed.payment_method || 'unknown',
+      source: 'api',
+      created_by: link.user_id
+    })
+  
+  if (error) {
+    console.error('Error saving expense:', error)
+    await sendTelegramMessage(chatId, '❌ Error al guardar el gasto. Intenta de nuevo.')
+    return
+  }
+  
   const response = formatExpenseResponse({
     amount: parsed.amount,
     merchant: parsed.merchant,
@@ -288,94 +255,16 @@ async function handleTextExpense(chatId: number, userId: number, text: string) {
     payment_method: parsed.payment_method
   })
   
-  await sendTelegramMessage(chatId, response)
-}
-
-async function handleVerification(
-  chatId: number,
-  telegramUserId: number,
-  code: string,
-  from: { first_name: string; username?: string }
-) {
-  const verification = pendingVerifications.get(code.toUpperCase())
-  
-  if (!verification) {
-    await sendTelegramMessage(chatId,
-      '❌ Código no válido o expirado.\n\n' +
-      'Genera un nuevo código en SpendPlan web → Configuración → Telegram'
-    )
-    return
-  }
-  
-  if (verification.expires_at < Date.now()) {
-    pendingVerifications.delete(code.toUpperCase())
-    await sendTelegramMessage(chatId, '❌ El código ha expirado. Genera uno nuevo.')
-    return
-  }
-  
-  // Link user
-  // In production, save to database
-  // For demo mode, we'll use in-memory
-  telegramLinks.set(telegramUserId, {
-    household_id: 'demo-household',
-    user_id: 'demo-user'
-  })
-  
-  pendingVerifications.delete(code.toUpperCase())
-  
-  await sendTelegramMessage(chatId,
-    '✅ *¡Cuenta vinculada correctamente!*\n\n' +
-    'Ahora puedes:\n' +
-    '📸 Enviar fotos de boletas\n' +
-    '💬 Escribir gastos: "12990 en Jumbo"\n' +
-    '📊 Ver estado: /estado\n' +
-    '🤖 Consultar IA: /ia ¿cómo voy este mes?'
-  )
-}
-
-async function confirmPendingExpense(
-  chatId: number,
-  userId: number,
-  link: { household_id: string; user_id: string }
-) {
-  const pending = pendingExpenses.get(userId)
-  
-  if (!pending) {
-    await sendTelegramMessage(chatId, '❌ No hay gasto pendiente. Envía un gasto primero.')
-    return
-  }
-  
-  // In production, save to Supabase
-  // For demo mode, we would save to localStorage (but that's client-side only)
-  // So we'll just confirm to the user
-  
-  pendingExpenses.delete(userId)
-  
-  await sendTelegramMessage(chatId,
+  await sendTelegramMessage(chatId, 
     '✅ *¡Gasto guardado!*\n\n' +
-    `💰 $${pending.amount?.toLocaleString('es-CL')}\n` +
-    `🏪 ${pending.merchant || 'Sin comercio'}\n` +
-    `📅 ${pending.date}\n\n` +
+    `💰 $${parsed.amount.toLocaleString('es-CL')}\n` +
+    `🏪 ${parsed.merchant || 'Sin comercio'}\n` +
+    `📅 ${today}\n\n` +
     'Puedes verlo en SpendPlan web → Gastos'
   )
 }
 
-async function sendMonthSummary(
-  chatId: number,
-  link: { household_id: string; user_id: string }
-) {
-  // In production, fetch from Supabase
-  // For demo, send a placeholder message
-  
-  await sendTelegramMessage(chatId,
-    '📊 *Resumen del mes*\n\n' +
-    'Para ver el resumen completo con gráficos,\n' +
-    'visita SpendPlan web → Resumen\n\n' +
-    '💡 Tip: Usa /ia ¿cómo voy este mes? para un análisis rápido'
-  )
-}
-
-async function analyzeWithAI(chatId: number, userId: number, question: string) {
+async function analyzeWithAI(chatId: number, question: string) {
   if (!question.trim()) {
     await sendTelegramMessage(chatId,
       '🤖 *Copiloto IA*\n\n' +
@@ -390,13 +279,12 @@ async function analyzeWithAI(chatId: number, userId: number, question: string) {
   await sendTelegramMessage(chatId, '🤖 Analizando...')
   
   try {
-    // Call copilot API (same as web)
-    const response = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/ai/chat`, {
+    const response = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'https://spendplan.vercel.app'}/api/ai/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         message: question,
-        context: 'Usuario consultando desde Telegram. Contexto limitado.',
+        context: 'Usuario consultando desde Telegram.',
         history: ''
       })
     })
@@ -413,17 +301,43 @@ async function analyzeWithAI(chatId: number, userId: number, question: string) {
   }
 }
 
-// API to register verification code (called from web)
+// API to generate verification code (called from web)
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const action = searchParams.get('action')
+  const odId = searchParams.get('user_id')
+  const householdId = searchParams.get('household_id')
   
-  if (action === 'generate_code') {
+  if (action === 'generate_code' && odId && householdId) {
+    const supabase = getSupabase()
     const code = Math.random().toString(36).substring(2, 8).toUpperCase()
-    pendingVerifications.set(code, {
-      telegram_user_id: 0, // Will be filled when user sends /vincular
-      expires_at: Date.now() + 10 * 60 * 1000 // 10 minutes
-    })
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString() // 10 minutes
+    
+    // Upsert: create or update
+    const { error } = await supabase
+      .from('telegram_links')
+      .upsert({
+        user_id: odId,
+        household_id: householdId,
+        verification_code: code,
+        code_expires_at: expiresAt,
+        linked_at: null,
+        telegram_user_id: null
+      }, {
+        onConflict: 'user_id'
+      })
+    
+    if (error) {
+      // Try insert if upsert fails
+      await supabase
+        .from('telegram_links')
+        .insert({
+          user_id: odId,
+          household_id: householdId,
+          verification_code: code,
+          code_expires_at: expiresAt
+        })
+    }
     
     return NextResponse.json({ code, expires_in: 600 })
   }
