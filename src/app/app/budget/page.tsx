@@ -161,8 +161,9 @@ interface BudgetData {
 
 // Helper functions
 function isDemoMode(): boolean {
-  if (typeof window === 'undefined') return false
-  return !!localStorage.getItem('spendplan_demo_user')
+  // Siempre usar localStorage para presupuesto hasta integrar Supabase
+  // TODO: Integrar con tablas de Supabase para presupuesto
+  return true
 }
 
 function getBudgetData(): BudgetData {
@@ -302,12 +303,12 @@ export default function BudgetPage() {
   const [complianceMonth, setComplianceMonth] = useState(getCurrentMonth())
 
   useEffect(() => {
-    loadData()
+      loadData()
   }, [currentHousehold])
 
   const loadData = async () => {
     setLoading(true)
-    
+
     if (isDemoMode()) {
       // Load demo categories + custom categories
       const customCats = getCustomCategories()
@@ -334,13 +335,13 @@ export default function BudgetPage() {
       if (JSON.stringify(updatedItems) !== JSON.stringify(data.items)) {
         saveBudgetData({ items: updatedItems })
       }
-    } else {
+      } else {
       setCategories(DEMO_CATEGORIES)
       setBudgetItems([])
-    }
+      }
     
-    setLoading(false)
-  }
+      setLoading(false)
+    }
 
   const handleSave = () => {
     setSaving(true)
@@ -621,7 +622,7 @@ export default function BudgetPage() {
       type: formData.kind === 'income' ? 'fixed' : (formData.type || 'fixed'),
       name: itemName,
       amount: formData.amount!,
-      category_id: categoryId,
+            category_id: categoryId,
       frequency: formData.frequency || 'monthly',
       start_date: formData.start_date || now.split('T')[0],
       end_date: endDate,
@@ -920,7 +921,7 @@ export default function BudgetPage() {
         <TabsContent value="overview" className="space-y-4 mt-4">
           <div className="grid gap-4 md:grid-cols-2">
             {/* Active Summary */}
-            <Card>
+        <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-lg">Resumen Activo</CardTitle>
                 <CardDescription>Items activos en tu presupuesto</CardDescription>
@@ -932,7 +933,7 @@ export default function BudgetPage() {
                     Ingresos ({activeIncomes.filter(i => i.is_active).length})
                   </span>
                   <span className="font-semibold text-green-600">+{formatCurrency(totalIncome, currentHousehold?.currency)}</span>
-                </div>
+              </div>
                 {(() => {
                   const activeFixed = activeFixedExpenses.filter(i => i.is_active)
                   const fixedNoInstallments = activeFixed.filter(i => !i.is_installment)
@@ -948,7 +949,7 @@ export default function BudgetPage() {
                           Compromisos Fijos ({fixedNoInstallments.length})
                         </span>
                         <span className="font-semibold">-{formatCurrency(totalFixedNoInstallments, currentHousehold?.currency)}</span>
-                      </div>
+              </div>
                       {fixedInstallments.length > 0 && (
                         <div className="flex justify-between items-center py-2 border-b">
                           <span className="flex items-center gap-2">
@@ -990,12 +991,12 @@ export default function BudgetPage() {
                   <span className={availableReal >= 0 ? 'text-green-600' : 'text-destructive'}>
                     {formatCurrency(availableReal, currentHousehold?.currency)}
                   </span>
-                </div>
-              </CardContent>
-            </Card>
+            </div>
+          </CardContent>
+        </Card>
 
             {/* Quick Stats */}
-            <Card>
+        <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-lg">Seguimiento {formatMonth(currentMonth)}</CardTitle>
                 <CardDescription>Gastos variables vs presupuesto</CardDescription>
@@ -1031,7 +1032,7 @@ export default function BudgetPage() {
                             </span>
                             <span className="text-muted-foreground"> / {formatCurrency(budget, currentHousehold?.currency)}</span>
                           </span>
-                        </div>
+              </div>
                         <div className="h-2 bg-muted rounded-full overflow-hidden">
                           <div 
                             className={`h-full rounded-full transition-all ${
@@ -1163,17 +1164,17 @@ export default function BudgetPage() {
           <Card>
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
-                <div>
+              <div>
                   <CardTitle className="text-lg flex items-center gap-2">
                     <TrendingUp className="h-5 w-5 text-green-600" />
                     Ingresos
                   </CardTitle>
                   <CardDescription>Fuentes de ingreso recurrentes</CardDescription>
-                </div>
+              </div>
                 <Button onClick={() => openNewItem('income')}>
                   <Plus className="mr-2 h-4 w-4" /> Agregar Ingreso
                 </Button>
-              </div>
+            </div>
             </CardHeader>
             <CardContent>
               {activeIncomes.length === 0 ? (
@@ -1193,8 +1194,8 @@ export default function BudgetPage() {
                   showInactive={showInactive}
                 />
               )}
-            </CardContent>
-          </Card>
+          </CardContent>
+        </Card>
         </TabsContent>
 
         {/* Fixed Expenses Tab */}
@@ -1247,7 +1248,7 @@ export default function BudgetPage() {
                     Gastos Variables
                   </CardTitle>
                   <CardDescription>Presupuesto con seguimiento mensual</CardDescription>
-                </div>
+              </div>
                 <Button onClick={() => openNewItem('expense', 'variable')}>
                   <Plus className="mr-2 h-4 w-4" /> Agregar Gasto Variable
                 </Button>
@@ -1283,7 +1284,7 @@ export default function BudgetPage() {
           <Card>
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
-                <div>
+              <div>
                   <CardTitle className="text-lg flex items-center gap-2">
                     <AlertTriangle className="h-5 w-5 text-red-600" />
                     Gastos No Presupuestados
@@ -1324,7 +1325,7 @@ export default function BudgetPage() {
                             <p className="font-medium">
                               {expense.description || expense.merchant || 'Gasto sin nombre'}
                             </p>
-                            <p className="text-sm text-muted-foreground">
+                <p className="text-sm text-muted-foreground">
                               {formatDate(expense.expense_date)}
                               {expense.merchant && expense.description && ` · ${expense.merchant}`}
                             </p>
@@ -1333,9 +1334,9 @@ export default function BudgetPage() {
                         <div className="text-right">
                           <p className="font-bold text-red-600">
                             {formatCurrency(expense.amount, currentHousehold?.currency)}
-                          </p>
-                        </div>
-                      </div>
+                </p>
+              </div>
+            </div>
                     ))}
                   
                   {/* Total */}
@@ -1355,20 +1356,20 @@ export default function BudgetPage() {
                   </div>
                 </div>
               )}
-            </CardContent>
-          </Card>
+          </CardContent>
+        </Card>
         </TabsContent>
 
         {/* Balance Tab - Income Statement Style with Expandable Rows */}
         <TabsContent value="balance" className="mt-4">
-          <Card>
+        <Card>
             <CardHeader className="pb-4">
               <CardTitle className="text-xl flex items-center gap-2">
                 <Wallet className="h-6 w-6" />
                 Estado de Resultados - {formatMonth(currentMonth)}
-              </CardTitle>
+            </CardTitle>
               <CardDescription>Click en cada fila para ver el detalle</CardDescription>
-            </CardHeader>
+          </CardHeader>
             <CardContent>
               {/* Table */}
               <div className="rounded-lg border overflow-hidden">
@@ -1752,7 +1753,7 @@ export default function BudgetPage() {
                         </span>
                       </div>
                       <div className="flex items-center gap-3">
-                        <div className="flex-1">
+                <div className="flex-1">
                           <div className="h-4 bg-muted rounded-full overflow-hidden relative">
                             {/* Budget bar (background) */}
                             <div className="absolute inset-0 bg-primary/20" />
@@ -1896,13 +1897,13 @@ export default function BudgetPage() {
                 {isNewCategory && (
                   <div className="space-y-2">
                     <Label>Nombre de la nueva categoría *</Label>
-                    <Input
+                  <Input
                       placeholder="Ej: Mascotas, Gimnasio, Ahorro..."
                       value={newCategoryName}
                       onChange={(e) => setNewCategoryName(e.target.value)}
                       autoFocus
-                    />
-                  </div>
+                  />
+                </div>
                 )}
               </div>
             )}
@@ -1923,13 +1924,13 @@ export default function BudgetPage() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Monto *</Label>
-                <Input
-                  type="number"
+                  <Input
+                    type="number"
                   placeholder="0"
                   value={formData.amount || ''}
                   onChange={(e) => setFormData({ ...formData, amount: parseFloat(e.target.value) || 0 })}
-                />
-              </div>
+                  />
+                </div>
               <div className="space-y-2">
                 <Label>Frecuencia</Label>
                 <Select 
@@ -2105,7 +2106,7 @@ export default function BudgetPage() {
                     const spent = getSpentForCategory(selectedBudgetItem.category_id)
                     const budget = getMonthlyAmount(selectedBudgetItem)
                     const percentage = budget > 0 ? (spent / budget) * 100 : 0
-                    return (
+              return (
                       <div 
                         className={`h-full rounded-full transition-all ${
                           percentage > 100 ? 'bg-destructive' : percentage > 80 ? 'bg-amber-500' : 'bg-primary'
@@ -2125,14 +2126,14 @@ export default function BudgetPage() {
 
               <div className="space-y-2">
                 <Label>Monto gastado *</Label>
-                <Input
-                  type="number"
-                  placeholder="0"
+                    <Input
+                      type="number"
+                      placeholder="0"
                   value={expenseForm.amount || ''}
                   onChange={(e) => setExpenseForm({ ...expenseForm, amount: parseFloat(e.target.value) || 0 })}
                   autoFocus
-                />
-              </div>
+                    />
+                  </div>
 
               <div className="space-y-2">
                 <Label>Fecha</Label>
@@ -2172,8 +2173,8 @@ export default function BudgetPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
-  )
+                </div>
+              )
 }
 
 // Empty State Component
@@ -2183,7 +2184,7 @@ function EmptyState({ icon: Icon, title, description }: { icon: React.ElementTyp
       {Icon && <Icon className="h-12 w-12 mx-auto mb-3 opacity-30" />}
       <p className="font-medium">{title}</p>
       <p className="text-sm">{description}</p>
-    </div>
+      </div>
   )
 }
 
