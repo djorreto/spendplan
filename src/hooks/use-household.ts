@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabaseBrowser } from '@/lib/supabase'
 import type { Household, HouseholdMembership, Profile } from '@/types'
 
@@ -13,6 +13,11 @@ interface HouseholdState {
   error: string | null
   isDemoMode: boolean
 }
+
+// Cache y debounce
+let householdCache: { households: Household[], timestamp: number } | null = null
+let lastHouseholdLoad = 0
+const CACHE_TTL = 30000 // 30 segundos
 
 // Demo mode helpers
 const DEMO_STORAGE_KEY = 'spendplan_demo_household'
@@ -47,6 +52,14 @@ export function useHousehold() {
 
   // Cargar hogares del usuario
   const loadHouseholds = useCallback(async () => {
+    // Debounce: evitar múltiples llamadas
+    const now = Date.now()
+    if (now - lastHouseholdLoad < 2000) {
+      console.log('🏠 Skipping household load (too soon)')
+      return
+    }
+    lastHouseholdLoad = now
+    
     try {
       // Primero verificar si hay un hogar demo guardado
       const demoHousehold = getDemoHousehold()
@@ -455,13 +468,13 @@ export function useHousehold() {
     
     const loadWithTimeout = async () => {
       try {
-        // Timeout de 5 segundos
+        // Timeout de 15 segundos
         const timeoutId = setTimeout(() => {
           if (isMounted) {
             console.warn('Household loading timeout')
             setState(prev => ({ ...prev, loading: false }))
           }
-        }, 5000)
+        }, 15000)
         
         await loadHouseholds()
         clearTimeout(timeoutId)
