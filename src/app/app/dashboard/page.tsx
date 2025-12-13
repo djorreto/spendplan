@@ -6,8 +6,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { useHousehold } from '@/hooks/use-household'
+import { useToast } from '@/components/ui/toast'
 import { formatCurrency, formatDate, getCurrentMonth } from '@/lib/utils'
 import { supabaseBrowser } from '@/lib/supabase'
+import { endOp, formatSupabaseError, logOp, startOp, withRetry } from '@/lib/debug-log'
 import { 
   Receipt,
   Plus,
@@ -90,6 +92,7 @@ interface DashboardData {
 
 export default function DashboardPage() {
   const { currentHousehold, isDemoMode } = useHousehold()
+  const { addToast } = useToast()
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
   const currentMonth = getCurrentMonth()
@@ -102,10 +105,13 @@ export default function DashboardPage() {
 
   const loadDashboardData = async () => {
     if (!currentHousehold) return
+    setLoading(true)
     
     // Solo es demo si explícitamente está en modo demo Y el household es de demo
     const isDemo = isDemoMode && currentHousehold.id.startsWith('demo-')
     
+    const op = startOp('dashboard.loadData', { householdId: currentHousehold.id, month: currentMonth, isDemo })
+
     // Calculate days in month and days passed
     const now = new Date()
     const year = now.getFullYear()
@@ -176,62 +182,128 @@ export default function DashboardPage() {
         daysInMonth,
         daysPassed
       })
+      endOp(op, true, {
+        totalIncome,
+        totalFixed,
+        totalVariableBudget,
+        totalVariableSpent,
+        totalUnbudgeted,
+      })
       setLoading(false)
     } else {
-      // Load from Supabase for real users
+      // Load from Supabase for real users (budget + expenses)
       try {
-        // Get recent expenses for this household
-        const startOfMonth = `${currentMonth}-01`
         const supabase = supabaseBrowser()
-        const { data: expenses, error: expensesError } = await supabase
-          .from('expenses')
-          .select('*, category:categories!expenses_category_id_fkey(name)')
-          .eq('household_id', currentHousehold.id)
-          .gte('expense_date', startOfMonth)
-          .order('expense_date', { ascending: false })
-          .limit(50)
+        const startOfMonth = `${currentMonth}-01`
+        const endOfMonth = `${currentMonth}-31`
 
-        if (expensesError) {
-          console.error('Error loading expenses:', expensesError)
+        const [expensesResp, budgetResp] = await Promise.all([
+          withRetry(
+            () =>
+              supabase
+                .from('expenses')
+                .select('id, amount, description, merchant, expense_date, category_id, is_unbudgeted, category:categories!expenses_category_id_fkey(name)')
+                .eq('household_id', currentHousehold.id)
+                .gte('expense_date', startOfMonth)
+                .lte('expense_date', endOfMonth)
+                .order('expense_date', { ascending: false })
+                .limit(200),
+            { retries: 2, baseDelayMs: 250, ctx: op, step: 'select.expenses' }
+          ),
+          withRetry(
+            () =>
+              supabase
+                .from('budget_items')
+                .select('id, kind, type, amount, category_id, is_active, start_date, end_date, is_indefinite')
+                .eq('household_id', currentHousehold.id),
+            { retries: 2, baseDelayMs: 250, ctx: op, step: 'select.budget_items' }
+          ),
+        ])
+
+        if (expensesResp.error) throw expensesResp.error
+        if (budgetResp.error) throw budgetResp.error
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const monthExpenses: any[] = expensesResp.data || []
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const budgetItems: any[] = budgetResp.data || []
+
+        const isItemActive = (item: any) => {
+          if (item.is_active === false) return false
+          const today = new Date().toISOString().split('T')[0]
+          if (item.start_date && item.start_date > today) return false
+          if (!item.is_indefinite && item.end_date && item.end_date < today) return false
+          return true
         }
 
-        const monthExpenses = expenses || []
-        const totalSpent = monthExpenses.reduce((sum: number, e: { amount?: number }) => sum + (e.amount || 0), 0)
-        
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const recentExpenses = monthExpenses.slice(0, 5).map((e: any) => ({
+        const activeIncomes = budgetItems.filter((i) => i.kind === 'income' && isItemActive(i))
+        const activeFixed = budgetItems.filter((i) => i.kind === 'expense' && i.type === 'fixed' && isItemActive(i))
+        const activeVariable = budgetItems.filter((i) => i.kind === 'expense' && i.type === 'variable' && isItemActive(i))
+
+        const totalIncome = activeIncomes.reduce((sum, i) => sum + (parseFloat(i.amount) || 0), 0)
+        const totalFixed = activeFixed.reduce((sum, i) => sum + (parseFloat(i.amount) || 0), 0)
+        const totalVariableBudget = activeVariable.reduce((sum, i) => sum + (parseFloat(i.amount) || 0), 0)
+
+        const budgetedCategoryIds = new Set(activeVariable.map((v) => v.category_id).filter(Boolean))
+
+        const totalVariableSpent = monthExpenses
+          .filter((e) => e.category_id && budgetedCategoryIds.has(e.category_id))
+          .reduce((sum, e) => sum + (e.amount || 0), 0)
+
+        const totalUnbudgeted = monthExpenses
+          .filter((e) => e.is_unbudgeted || !e.category_id || !budgetedCategoryIds.has(e.category_id))
+          .reduce((sum, e) => sum + (e.amount || 0), 0)
+
+        const availableReal = totalIncome - totalFixed - totalVariableSpent - totalUnbudgeted
+
+        const recentExpenses = monthExpenses.slice(0, 5).map((e) => ({
           id: e.id,
           amount: e.amount,
           description: e.description || '',
           merchant: e.merchant || '',
           expense_date: e.expense_date,
-          category_name: e.category?.name || 'Sin categoría'
+          category_name: e.category?.name || (e.is_unbudgeted ? 'No presupuestado' : 'Sin categoría'),
         }))
 
         setData({
-          totalIncome: 0,
-          totalFixed: 0,
-          totalVariableBudget: 0,
-          totalVariableSpent: totalSpent,
-          totalUnbudgeted: 0,
-          availableReal: -totalSpent,
+          totalIncome,
+          totalFixed,
+          totalVariableBudget,
+          totalVariableSpent,
+          totalUnbudgeted,
+          availableReal,
           recentExpenses,
           daysInMonth,
-          daysPassed
+          daysPassed,
+        })
+
+        endOp(op, true, {
+          totalIncome,
+          totalFixed,
+          totalVariableBudget,
+          totalVariableSpent,
+          totalUnbudgeted,
         })
       } catch (error) {
         console.error('Error loading dashboard data:', error)
-        setData({
-          totalIncome: 0,
-          totalFixed: 0,
-          totalVariableBudget: 0,
-          totalVariableSpent: 0,
-          totalUnbudgeted: 0,
-          availableReal: 0,
-          recentExpenses: [],
-          daysInMonth,
-          daysPassed
-        })
+        logOp(op, 'error', 'load failed', 'loadDashboardData', { error: formatSupabaseError(error) })
+        endOp(op, false)
+        addToast({ type: 'error', message: `Error al cargar resumen (opId: ${op.opId})` })
+
+        // Evitar “flash” a ceros: si ya teníamos data, la mantenemos.
+        setData((prev) =>
+          prev || {
+            totalIncome: 0,
+            totalFixed: 0,
+            totalVariableBudget: 0,
+            totalVariableSpent: 0,
+            totalUnbudgeted: 0,
+            availableReal: 0,
+            recentExpenses: [],
+            daysInMonth,
+            daysPassed,
+          }
+        )
       }
       setLoading(false)
     }

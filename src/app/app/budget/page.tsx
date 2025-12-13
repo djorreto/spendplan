@@ -448,88 +448,107 @@ export default function BudgetPage() {
   const [complianceMonth, setComplianceMonth] = useState(getCurrentMonth())
 
   useEffect(() => {
-      loadData()
-  }, [currentHousehold])
+    // Evitar “flash” a cero: solo cargar cuando existe household real o demo
+    if (!currentHousehold && !isDemo) return
+    loadData()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentHousehold?.id, isDemo])
 
   const loadData = async () => {
+    if (!currentHousehold && !isDemo) return
     setLoading(true)
 
-    if (isDemo) {
-      // Load demo categories + custom categories
-      const customCats = getCustomCategories()
-      setCategories([...DEMO_CATEGORIES, ...customCats])
-      const data = getBudgetData()
-      
-      // Auto-update active status based on dates
-      const today = new Date()
-      const updatedItems = data.items.map(item => ({
-        ...item,
-        is_active: isItemActiveByDate(item, today)
-      }))
-      
-      setBudgetItems(updatedItems)
-      
-      // Load all expenses (for charts)
-      const demoExpenses = getDemoExpenses()
-      setAllExpenses(demoExpenses)
-      
-      // Load expenses for current month (for budget tracking)
-      setExpenses(demoExpenses.filter(e => e.expense_date.startsWith(currentMonth)))
-      
-      // Save if status changed
-      if (JSON.stringify(updatedItems) !== JSON.stringify(data.items)) {
-        saveBudgetData({ items: updatedItems })
-      }
-    } else if (currentHousehold) {
-      // Load from Supabase
-      try {
-        // Load categories from Supabase or use defaults
-        const supabase = supabaseBrowser()
-        const { data: dbCategories } = await supabase
-          .from('categories')
-          .select('*')
-          .or(`household_id.eq.${currentHousehold.id},is_system.eq.true`)
-          .order('sort_order')
+    const op = startOp('budget.loadData', {
+      householdId: currentHousehold?.id || 'demo',
+      month: currentMonth,
+      isDemo,
+    })
+
+    try {
+      if (isDemo) {
+        // Load demo categories + custom categories
+        const customCats = getCustomCategories()
+        setCategories([...DEMO_CATEGORIES, ...customCats])
+        const data = getBudgetData()
         
-        if (dbCategories && dbCategories.length > 0) {
-          setCategories(dbCategories)
-        } else {
-          setCategories(DEMO_CATEGORIES)
-        }
-        
-        // Load budget items
-        const items = await loadBudgetItemsFromSupabase(currentHousehold.id)
+        // Auto-update active status based on dates
         const today = new Date()
-        const updatedItems = items.map(item => ({
+        const updatedItems = data.items.map(item => ({
           ...item,
           is_active: isItemActiveByDate(item, today)
         }))
+        
         setBudgetItems(updatedItems)
         
-        // Load expenses
-        const { data: dbExpenses } = await supabase
-          .from('expenses')
-          .select('*')
-          .eq('household_id', currentHousehold.id)
-          .gte('expense_date', `${currentMonth}-01`)
-          .order('expense_date', { ascending: false })
+        // Load all expenses (for charts)
+        const demoExpenses = getDemoExpenses()
+        setAllExpenses(demoExpenses)
         
-        if (dbExpenses) {
-          setExpenses(dbExpenses)
-          setAllExpenses(dbExpenses)
+        // Load expenses for current month (for budget tracking)
+        setExpenses(demoExpenses.filter(e => e.expense_date.startsWith(currentMonth)))
+        
+        // Save if status changed
+        if (JSON.stringify(updatedItems) !== JSON.stringify(data.items)) {
+          saveBudgetData({ items: updatedItems })
         }
-      } catch (error) {
-        console.error('Error loading budget data:', error)
-        addToast({ type: 'error', message: 'Error al cargar presupuesto' })
-        setCategories(DEMO_CATEGORIES)
-        setBudgetItems([])
+        endOp(op, true, { items: updatedItems.length, expenses: demoExpenses.length })
+        return
       }
-    } else {
-      setCategories(DEMO_CATEGORIES)
-      setBudgetItems([])
+
+      if (!currentHousehold) return
+
+      // Load from Supabase
+      const supabase = supabaseBrowser()
+
+      // Load categories
+      const catsResp = await withRetry(
+        () =>
+          supabase
+            .from('categories')
+            .select('*')
+            .or(`household_id.eq.${currentHousehold.id},is_system.eq.true`)
+            .order('sort_order'),
+        { retries: 2, baseDelayMs: 250, ctx: op, step: 'select.categories' }
+      )
+      if (catsResp.error) throw catsResp.error
+      const dbCategories = catsResp.data || []
+      setCategories(dbCategories.length > 0 ? dbCategories : DEMO_CATEGORIES)
+
+      // Load budget items
+      const items = await loadBudgetItemsFromSupabase(currentHousehold.id)
+      const today = new Date()
+      const updatedItems = items.map(item => ({
+        ...item,
+        is_active: isItemActiveByDate(item, today)
+      }))
+      setBudgetItems(updatedItems)
+
+      // Load expenses for current month (tracking + charts)
+      const expensesResp = await withRetry(
+        () =>
+          supabase
+            .from('expenses')
+            .select('*')
+            .eq('household_id', currentHousehold.id)
+            .gte('expense_date', `${currentMonth}-01`)
+            .order('expense_date', { ascending: false }),
+        { retries: 2, baseDelayMs: 250, ctx: op, step: 'select.expenses' }
+      )
+      if (expensesResp.error) throw expensesResp.error
+
+      const dbExpenses = expensesResp.data || []
+      setExpenses(dbExpenses)
+      setAllExpenses(dbExpenses)
+
+      endOp(op, true, { categories: dbCategories.length, items: updatedItems.length, expenses: dbExpenses.length })
+    } catch (error) {
+      console.error('Error loading budget data:', error)
+      logOp(op, 'error', 'load failed', 'loadData', { error: formatSupabaseError(error) })
+      endOp(op, false)
+      addToast({ type: 'error', message: `Error al cargar presupuesto (opId: ${op.opId})` })
+    } finally {
+      setLoading(false)
     }
-    
-    setLoading(false)
   }
 
   const handleSave = async () => {
