@@ -19,6 +19,8 @@ import {
 
 export const runtime = 'nodejs'
 
+const TELEGRAM_SESSION_TIMEOUT_MS = 3 * 60 * 1000
+
 type TelegramCallbackQuery = {
   id: string
   from: { id: number; username?: string }
@@ -68,7 +70,7 @@ async function handleMessage(message: TelegramMessage) {
   // Check if user is linked
   const { data: link } = await supabase
     .from('telegram_links')
-    .select('household_id, user_id')
+    .select('*')
     .eq('telegram_user_id', odId)
     .not('linked_at', 'is', null)
     .single()
@@ -99,8 +101,26 @@ async function handleMessage(message: TelegramMessage) {
     return
   }
   
+  // Session reset: if inactivity > 3 min, treat next message as a fresh start
+  const expired = isTelegramSessionExpired(link?.last_activity_at)
+  if (expired) {
+    // We keep it light: show menu/help and continue only if the user sent a clear actionable intent.
+    const intent = detectIntent(text)
+    if (intent === 'help' || intent === 'new_expense' || intent === 'link_help') {
+      await sendTelegramMessage(
+        chatId,
+        '⏱️ Reinicié la conversación por inactividad.\n\n' +
+          'Cuéntame qué necesitas (o toca un botón):',
+        { reply_markup: mainKeyboard(true) }
+      )
+      await touchTelegramActivity(odId)
+      return
+    }
+  }
+
   if (text) {
     await handleConversationalText(chatId, odId, text, link)
+    await touchTelegramActivity(odId)
     return
   }
 }
@@ -150,6 +170,26 @@ function detectIntent(text: string): 'help' | 'link_help' | 'balance' | 'summary
   if (/\d{3,}/.test(t) && /(\$|clp|mil|lucas)?/.test(t)) return 'expense_like'
   // default to AI for free-form budget questions
   return 'ai'
+}
+
+function isTelegramSessionExpired(lastActivityAt: unknown): boolean {
+  if (!lastActivityAt) return false
+  const ts = Date.parse(String(lastActivityAt))
+  if (!Number.isFinite(ts)) return false
+  return Date.now() - ts > TELEGRAM_SESSION_TIMEOUT_MS
+}
+
+async function touchTelegramActivity(telegramUserId: number) {
+  const supabase = getSupabase()
+  try {
+    // Best-effort: if the column isn't present yet, ignore.
+    await supabase
+      .from('telegram_links')
+      .update({ last_activity_at: new Date().toISOString() })
+      .eq('telegram_user_id', telegramUserId)
+  } catch {
+    // ignore
+  }
 }
 
 async function handleConversationalText(
@@ -490,6 +530,7 @@ async function handleCallbackQuery(cb: TelegramCallbackQuery) {
   await answerTelegramCallbackQuery(cb.id, { text: 'Listo' })
   // Remove buttons so it can't be pressed again
   await editTelegramMessageReplyMarkup(chatId, messageId, { inline_keyboard: [] })
+  await touchTelegramActivity(cb.from.id)
 
   if (action === 'confirm') {
     const { data: updated, error } = await supabase
