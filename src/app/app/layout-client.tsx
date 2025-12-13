@@ -11,7 +11,7 @@ import { LoadingPage } from '@/components/ui/loading'
 import { ErrorPage } from '@/components/ui/error'
 import { CopilotChat, CopilotButton } from '@/components/copilot/copilot-chat'
 import { supabaseBrowser } from '@/lib/supabase'
-import { getMonthDateRange } from '@/lib/utils'
+import { getMonthDateRange, getPreviousMonth } from '@/lib/utils'
 import type { FinancialContext } from '@/lib/ai/copilot'
 
 // Demo mode constants
@@ -73,6 +73,17 @@ export function AppLayoutClient({ children }: { children: React.ReactNode }) {
           const budgetItems = budgetData.items || []
           const allExpenses = JSON.parse(localStorage.getItem(DEMO_EXPENSES_KEY) || '[]')
           const monthExpenses = allExpenses.filter((e: any) => e.expense_date?.startsWith(selectedMonth))
+          const prev1 = getPreviousMonth(selectedMonth)
+          const prev2 = getPreviousMonth(prev1)
+          const historicalMonths = [selectedMonth, prev1, prev2]
+          const historicalSpend = historicalMonths.map((m) => {
+            const exps = allExpenses.filter((e: any) => e.expense_date?.startsWith(m))
+            const totalSpent = exps.reduce((sum: number, e: any) => sum + (e.amount || 0), 0)
+            const totalUnbudgeted = exps
+              .filter((e: any) => e.is_unbudgeted || !e.category_id)
+              .reduce((sum: number, e: any) => sum + (e.amount || 0), 0)
+            return { month: m, totalSpent, totalUnbudgeted }
+          })
 
           const activeIncomes = budgetItems.filter((i: any) => i.kind === 'income' && i.is_active !== false)
           const activeFixed = budgetItems.filter((i: any) => i.kind === 'expense' && i.type === 'fixed' && i.is_active !== false)
@@ -157,6 +168,7 @@ export function AppLayoutClient({ children }: { children: React.ReactNode }) {
             topMerchants,
             uncategorizedExpenses,
             recentExpenses,
+            historicalSpend,
           })
           return
         }
@@ -164,8 +176,11 @@ export function AppLayoutClient({ children }: { children: React.ReactNode }) {
         // Real mode: Supabase
         const supabase = supabaseBrowser()
         const range = getMonthDateRange(selectedMonth)
+        const prev1 = getPreviousMonth(selectedMonth)
+        const prev2 = getPreviousMonth(prev1)
+        const oldest = getMonthDateRange(prev2).start
 
-        const [budgetResp, expensesResp] = await Promise.all([
+        const [budgetResp, expensesResp, expensesHistResp] = await Promise.all([
           supabase
             .from('budget_items')
             .select('id, name, kind, type, amount, category_id, is_active, start_date, end_date, is_indefinite')
@@ -178,13 +193,24 @@ export function AppLayoutClient({ children }: { children: React.ReactNode }) {
             .lt('expense_date', range.endExclusive)
             .order('expense_date', { ascending: false })
             .limit(500),
+          // small historical window (3 months including selected)
+          supabase
+            .from('expenses')
+            .select('amount, expense_date, category_id, is_unbudgeted')
+            .eq('household_id', currentHousehold.id)
+            .gte('expense_date', oldest)
+            .lt('expense_date', range.endExclusive)
+            .order('expense_date', { ascending: false })
+            .limit(2000),
         ])
 
         if (budgetResp.error) throw budgetResp.error
         if (expensesResp.error) throw expensesResp.error
+        if (expensesHistResp.error) throw expensesHistResp.error
 
         const budgetItems = budgetResp.data || []
         const monthExpenses = expensesResp.data || []
+        const histExpenses = expensesHistResp.data || []
 
         const isItemActive = (item: any) => {
           if (item.is_active === false) return false
@@ -267,6 +293,16 @@ export function AppLayoutClient({ children }: { children: React.ReactNode }) {
           date: e.expense_date,
         }))
 
+        const histMonths = [selectedMonth, prev1, prev2]
+        const historicalSpend = histMonths.map((m) => {
+          const exps = histExpenses.filter((e: any) => String(e.expense_date).startsWith(m))
+          const totalSpent = exps.reduce((sum: number, e: any) => sum + (Number(e.amount) || 0), 0)
+          const totalUnbudgeted = exps
+            .filter((e: any) => e.is_unbudgeted || !e.category_id)
+            .reduce((sum: number, e: any) => sum + (Number(e.amount) || 0), 0)
+          return { month: m, totalSpent, totalUnbudgeted }
+        })
+
         const { daysInMonth, daysPassed } = computeDays(selectedMonth)
 
         setIfOk({
@@ -284,6 +320,7 @@ export function AppLayoutClient({ children }: { children: React.ReactNode }) {
           topMerchants,
           uncategorizedExpenses,
           recentExpenses,
+          historicalSpend,
         })
       } catch {
         // Keep minimal context, but at least with correct month/currency
@@ -380,7 +417,8 @@ function getEmptyContext(month: string, currency: string): FinancialContext {
     categoriesOverBudget: [],
     topMerchants: [],
     uncategorizedExpenses: [],
-    recentExpenses: []
+    recentExpenses: [],
+    historicalSpend: [],
   }
 }
 

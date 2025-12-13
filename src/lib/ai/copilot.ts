@@ -43,6 +43,13 @@ export interface FinancialContext {
     category: string
     date: string
   }>
+
+  // Optional: short historical view (last months) to help trend analysis
+  historicalSpend?: Array<{
+    month: string
+    totalSpent: number
+    totalUnbudgeted: number
+  }>
 }
 
 export interface CopilotMessage {
@@ -160,6 +167,14 @@ function buildContextSummary(ctx: FinancialContext): string {
   if (ctx.topMerchants.length > 0) {
     const m = ctx.topMerchants[0]
     lines.push(`Comercio #1: ${m.name} $${m.amount.toLocaleString('es-CL')} (${m.count})`)
+  }
+
+  if (ctx.historicalSpend && ctx.historicalSpend.length > 0) {
+    const hist = ctx.historicalSpend
+      .slice(0, 3)
+      .map((h) => `${h.month}: $${h.totalSpent.toLocaleString('es-CL')}${h.totalUnbudgeted > 0 ? ` (no pres.: $${h.totalUnbudgeted.toLocaleString('es-CL')})` : ''}`)
+      .join(' | ')
+    lines.push(`Histórico (3m): ${hist}`)
   }
 
   return lines.join('\n')

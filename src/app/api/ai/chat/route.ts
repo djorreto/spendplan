@@ -90,15 +90,10 @@ function normalizeExecutiveAnswer(text: string): string {
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
 
-  // Hard cap to keep it executive: max 700 chars, max 7 lines
-  const maxChars = 700
-  const maxLines = 7
-
-  const truncated = cleaned.length > maxChars ? cleaned.slice(0, maxChars) : cleaned
-  const lines = truncated.split('\n').map((l) => l.trim()).filter(Boolean)
-  const limited = lines.slice(0, maxLines).join('\n')
-
-  return limited
+  // No truncamos de forma agresiva (a veces se necesita detalle).
+  // Solo ponemos un tope de seguridad MUY alto para evitar respuestas absurdas.
+  const maxChars = 4000
+  return cleaned.length > maxChars ? cleaned.slice(0, maxChars) : cleaned
 }
 
 const COPILOT_SYSTEM_PROMPT = `Eres el asesor ejecutivo de SpendPlan (personas naturales).
@@ -116,13 +111,12 @@ TU ÁREA DE ESPECIALIZACIÓN:
 - Categorización de gastos
 - Consejos prácticos para Chile
 
-FORMATO ESTRICTO (OBLIGATORIO):
-- Máximo 6 líneas.
-- Máximo 4 bullets.
-- 1 recomendación accionable y concreta (qué hacer hoy/esta semana).
-- Si falta información: 1 sola pregunta de aclaración.
+FORMATO (PRIORIDAD: EJECUTIVO, SIN RELLENO):
+- Primero entrega un "Resumen ejecutivo" (3-6 bullets, 6-10 líneas total).
+- Si el usuario pide detalle o si el análisis lo amerita, agrega una sección "Detalle" (hasta 10 bullets).
+- Cierra con 1 acción concreta ("Siguiente paso") y 0-1 pregunta de aclaración si es estrictamente necesario.
 - Usa CLP ($) y números del contexto. NO inventes.
-- No repitas el contexto en prosa.
+- Si el contexto es 0 o incompleto, dilo explícitamente y sugiere qué registrar.
 
 RESTRICCIONES:
 - SOLO respondes sobre finanzas personales y presupuesto
@@ -170,7 +164,7 @@ Usuario: ${message}
 
 Copiloto:`,
       temperature: 0.2,
-      maxTokens: 180,
+      maxTokens: 420,
     })
 
     // Safety net: if model still answers off-topic, replace with the allowed response
