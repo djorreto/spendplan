@@ -8,6 +8,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { createOpenAI } from '@ai-sdk/openai'
+import { generateText } from 'ai'
 import { 
   sendTelegramMessage, 
   answerTelegramCallbackQuery,
@@ -491,7 +493,17 @@ async function proposeExpenseForConfirmation(
   }
 
   const supabase = getSupabase()
-  const today = new Date().toISOString().split('T')[0]
+  const expenseDate = parseDateFromText(text) || new Date().toISOString().split('T')[0]
+
+  // Category suggestion (best effort)
+  const catSuggestion = await suggestCategoryForExpense(link.household_id, {
+    merchant: parsed.merchant,
+    description: parsed.description,
+    amount: parsed.amount,
+  })
+  const suggestedCategoryId = catSuggestion?.category_id || null
+  const applyCategoryId = catSuggestion && catSuggestion.confidence >= 0.75 ? catSuggestion.category_id : null
+  const categoryLabel = catSuggestion?.category_name || null
 
   // Create pending expense (confirmed only after user presses button)
   const { data: inserted, error } = await supabase
@@ -501,10 +513,14 @@ async function proposeExpenseForConfirmation(
       amount: parsed.amount,
       merchant: parsed.merchant,
       description: parsed.description || (parsed.merchant ? null : text),
-      expense_date: today,
+      expense_date: expenseDate,
       payment_method: parsed.payment_method || 'unknown',
       source: 'api',
       status: 'pending',
+      category_id: applyCategoryId,
+      ai_category_suggestion: suggestedCategoryId,
+      ai_confidence: catSuggestion?.confidence ?? null,
+      ai_reason: catSuggestion?.reason ?? null,
       created_by: link.user_id,
       updated_by: link.user_id,
       notes: `telegram_user:${odId}`,
@@ -527,8 +543,11 @@ async function proposeExpenseForConfirmation(
     `• Monto: ${formatMoney(parsed.amount)}\n` +
     (parsed.merchant ? `• Comercio: ${parsed.merchant}\n` : '') +
     (parsed.description && parsed.description !== text ? `• Descripción: ${parsed.description}\n` : '') +
-    `• Fecha: ${today}\n` +
+    `• Fecha: ${expenseDate}\n` +
     (parsed.payment_method ? `• Pago: ${parsed.payment_method}\n` : '') +
+    (categoryLabel
+      ? `• Categoría sugerida: ${categoryLabel} (${Math.round((catSuggestion?.confidence || 0) * 100)}%)\n`
+      : '') +
     `\n¿Lo guardo?`
 
   await sendTelegramMessage(chatId, preview, {
@@ -541,6 +560,133 @@ async function proposeExpenseForConfirmation(
       ],
     },
   })
+}
+
+function parseDateFromText(text: string): string | null {
+  const t = String(text || '').toLowerCase()
+  const now = new Date()
+
+  if (/\banteayer\b/.test(t)) {
+    const d = new Date(now)
+    d.setDate(d.getDate() - 2)
+    return d.toISOString().slice(0, 10)
+  }
+  if (/\bayer\b/.test(t)) {
+    const d = new Date(now)
+    d.setDate(d.getDate() - 1)
+    return d.toISOString().slice(0, 10)
+  }
+  // dd/mm(/yyyy) or dd-mm(-yyyy)
+  const m = t.match(/\b(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?\b/)
+  if (m) {
+    const dd = Number(m[1])
+    const mm = Number(m[2])
+    const yyRaw = m[3]
+    const yyyy = yyRaw ? (yyRaw.length === 2 ? Number(`20${yyRaw}`) : Number(yyRaw)) : now.getFullYear()
+    if (dd >= 1 && dd <= 31 && mm >= 1 && mm <= 12 && yyyy >= 2000 && yyyy <= 2100) {
+      const d = new Date(yyyy, mm - 1, dd)
+      // Ensure date didn't overflow
+      if (d.getFullYear() === yyyy && d.getMonth() === mm - 1 && d.getDate() === dd) {
+        return d.toISOString().slice(0, 10)
+      }
+    }
+  }
+  return null
+}
+
+async function suggestCategoryForExpense(
+  householdId: string,
+  expense: { merchant: string | null; description: string | null; amount: number }
+): Promise<{ category_id: string; category_name: string; confidence: number; reason: string } | null> {
+  const supabase = getSupabase()
+
+  const { data: cats, error } = await supabase
+    .from('categories')
+    .select('id, name, is_system, household_id, is_active')
+    .or(`household_id.eq.${householdId},is_system.eq.true`)
+    .eq('is_active', true)
+    .order('sort_order')
+
+  if (error || !cats || cats.length === 0) return null
+
+  // Heuristic first (fast + stable)
+  const merchant = (expense.merchant || '').toLowerCase()
+  if (merchant) {
+    const keywordToCategoryNameContains: Array<{ keyword: RegExp; catContains: RegExp; reason: string }> = [
+      { keyword: /l[ií]der|lider/, catContains: /supermerc|aliment/i, reason: 'Comercio coincide con Líder' },
+      { keyword: /jumbo/, catContains: /supermerc|aliment/i, reason: 'Comercio coincide con Jumbo' },
+      { keyword: /santa isabel/, catContains: /supermerc|aliment/i, reason: 'Comercio coincide con Santa Isabel' },
+      { keyword: /unimarc/, catContains: /supermerc|aliment/i, reason: 'Comercio coincide con Unimarc' },
+    ]
+    for (const rule of keywordToCategoryNameContains) {
+      if (!rule.keyword.test(merchant)) continue
+      const match = cats.find((c: any) => rule.catContains.test(String(c.name || '')))
+      if (match) {
+        return {
+          category_id: match.id,
+          category_name: match.name,
+          confidence: 0.78,
+          reason: rule.reason,
+        }
+      }
+    }
+  }
+
+  // AI fallback (best effort)
+  const apiKey = process.env.GROQ_API_KEY
+  if (!apiKey) return null
+
+  const groq = createOpenAI({
+    apiKey,
+    baseURL: 'https://api.groq.com/openai/v1',
+  })
+
+  const categories = cats.map((c: any) => ({ id: c.id, name: c.name }))
+  const prompt = `Clasifica este gasto en UNA categoría de la lista. Responde SOLO JSON válido.
+
+GASTO:
+- comercio: ${expense.merchant || ''}
+- descripción: ${expense.description || ''}
+- monto: ${expense.amount}
+
+CATEGORÍAS DISPONIBLES (id, name):
+${categories.map((c) => `- ${c.id}: ${c.name}`).join('\n')}
+
+Formato exacto:
+{"category_id":"<id>","confidence":0.0,"reason":"<breve>"}
+Reglas:
+- confidence entre 0 y 1
+- Si no estás seguro, usa confidence <= 0.6 y elige la mejor opción igual.
+`
+
+  const { text } = await generateText({
+    model: groq('llama-3.3-70b-versatile'),
+    system: 'Responde únicamente en JSON válido, sin markdown ni explicación extra.',
+    prompt,
+    temperature: 0.2,
+    maxTokens: 180,
+  })
+
+  const trimmed = String(text || '').trim()
+  const start = trimmed.indexOf('{')
+  const end = trimmed.lastIndexOf('}')
+  const jsonCandidate = start >= 0 && end >= 0 && end > start ? trimmed.slice(start, end + 1) : trimmed
+
+  try {
+    const parsed = JSON.parse(jsonCandidate) as { category_id?: string; confidence?: number; reason?: string }
+    if (!parsed.category_id) return null
+    const found = categories.find((c) => c.id === parsed.category_id)
+    if (!found) return null
+    const conf = Math.max(0, Math.min(1, Number(parsed.confidence ?? 0.5)))
+    return {
+      category_id: found.id,
+      category_name: found.name,
+      confidence: conf,
+      reason: String(parsed.reason || 'Sugerencia IA'),
+    }
+  } catch {
+    return null
+  }
 }
 
 async function handleCallbackQuery(cb: TelegramCallbackQuery) {

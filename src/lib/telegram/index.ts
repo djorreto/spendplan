@@ -159,6 +159,22 @@ export function parseExpenseFromText(text: string): {
       }
 
       result.merchant = normalizeName(candidate)
+
+      // If the user added an item after the merchant with punctuation, treat it as description.
+      // Example: "12990 en Líder, galletas" => merchant "Líder", description "galletas"
+      try {
+        const idxMerchant = text.toLowerCase().indexOf(candidate.toLowerCase())
+        if (idxMerchant >= 0) {
+          const after = text.slice(idxMerchant + candidate.length).trim()
+          // Only accept if user explicitly separated with punctuation
+          if (/^[,;:\-–—]/.test(after)) {
+            const cleaned = after.replace(/^[,;:\-–—]+\s*/g, '').trim()
+            if (cleaned.length > 1) result.description = cleaned.substring(0, 120)
+          }
+        }
+      } catch {
+        // ignore
+      }
       break
     }
   }
