@@ -313,8 +313,10 @@ export async function GET(req: NextRequest) {
     const code = Math.random().toString(36).substring(2, 8).toUpperCase()
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString() // 10 minutes
     
+    console.log('📱 Generating telegram code for user:', odId, 'household:', householdId)
+    
     // Upsert: create or update
-    const { error } = await supabase
+    const { data: upsertData, error: upsertError } = await supabase
       .from('telegram_links')
       .upsert({
         user_id: odId,
@@ -326,10 +328,12 @@ export async function GET(req: NextRequest) {
       }, {
         onConflict: 'user_id'
       })
+      .select()
     
-    if (error) {
+    if (upsertError) {
+      console.log('📱 Upsert failed, trying insert:', upsertError.message)
       // Try insert if upsert fails
-      await supabase
+      const { data: insertData, error: insertError } = await supabase
         .from('telegram_links')
         .insert({
           user_id: odId,
@@ -337,6 +341,18 @@ export async function GET(req: NextRequest) {
           verification_code: code,
           code_expires_at: expiresAt
         })
+        .select()
+      
+      if (insertError) {
+        console.error('📱 Insert also failed:', insertError)
+        return NextResponse.json({ 
+          error: `Error guardando código: ${insertError.message}`,
+          code: null 
+        })
+      }
+      console.log('📱 Insert succeeded:', insertData)
+    } else {
+      console.log('📱 Upsert succeeded:', upsertData)
     }
     
     return NextResponse.json({ code, expires_in: 600 })
