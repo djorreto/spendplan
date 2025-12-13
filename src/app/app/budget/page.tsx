@@ -217,17 +217,19 @@ async function saveBudgetItemToSupabase(
   item: BudgetItem, 
   householdId: string,
   userId: string
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; id?: string }> {
   const supabase = supabaseBrowser()
   
-  const dbItem = {
-    id: item.id,
+  // Check if this is a new item (non-UUID id) or existing
+  const isNewItem = item.id.startsWith('item-')
+  
+  const dbItem: Record<string, unknown> = {
     household_id: householdId,
     name: item.name,
     amount: item.amount,
     kind: item.kind,
     type: item.type,
-    category_id: item.category_id || null,
+    category_id: item.category_id?.startsWith('cat-') ? null : item.category_id, // Don't use demo category IDs
     frequency: item.frequency,
     is_active: item.is_active && !item.manually_deactivated,
     start_date: item.start_date,
@@ -238,16 +240,35 @@ async function saveBudgetItemToSupabase(
     created_by: userId,
   }
   
-  const { error } = await supabase
-    .from('budget_items')
-    .upsert(dbItem, { onConflict: 'id' })
-  
-  if (error) {
-    console.error('Error saving budget item:', error)
-    return { success: false, error: error.message }
+  if (isNewItem) {
+    // Insert new item, let Supabase generate UUID
+    const { data, error } = await supabase
+      .from('budget_items')
+      .insert(dbItem)
+      .select('id')
+      .single()
+    
+    if (error) {
+      console.error('Error inserting budget item:', error)
+      return { success: false, error: error.message }
+    }
+    
+    return { success: true, id: data?.id }
+  } else {
+    // Update existing item
+    dbItem.id = item.id
+    const { error } = await supabase
+      .from('budget_items')
+      .update(dbItem)
+      .eq('id', item.id)
+    
+    if (error) {
+      console.error('Error updating budget item:', error)
+      return { success: false, error: error.message }
+    }
+    
+    return { success: true, id: item.id }
   }
-  
-  return { success: true }
 }
 
 async function deleteBudgetItemFromSupabase(itemId: string): Promise<boolean> {
@@ -705,7 +726,7 @@ export default function BudgetPage() {
     setDialogOpen(true)
   }
 
-  const saveItem = () => {
+  const saveItem = async () => {
     const isVariableExpense = formData.kind === 'expense' && formData.type === 'variable'
     
     // Validation
@@ -813,13 +834,26 @@ export default function BudgetPage() {
       addToast({ type: 'success', message: 'Item agregado' })
     }
 
-    setBudgetItems(updatedItems)
-    
     // Save to storage
     if (isDemo) {
+      setBudgetItems(updatedItems)
       saveBudgetData({ items: updatedItems })
     } else if (currentHousehold && profile) {
-      saveBudgetItemToSupabase(newItem, currentHousehold.id, profile.id)
+      const result = await saveBudgetItemToSupabase(newItem, currentHousehold.id, profile.id)
+      if (result.success && result.id) {
+        // Update item with real UUID from Supabase
+        const itemWithRealId = { ...newItem, id: result.id }
+        if (editingItem) {
+          setBudgetItems(budgetItems.map(item => item.id === editingItem.id ? itemWithRealId : item))
+        } else {
+          setBudgetItems([...budgetItems, itemWithRealId])
+        }
+      } else {
+        addToast({ type: 'error', message: 'Error al guardar: ' + (result.error || 'desconocido') })
+        return
+      }
+    } else {
+      setBudgetItems(updatedItems)
     }
     
     setDialogOpen(false)
