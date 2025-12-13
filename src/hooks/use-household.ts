@@ -70,6 +70,57 @@ export function useHousehold() {
   // Usar singleton
   const supabase = supabaseBrowser()
 
+  // Cargar miembros de un hogar
+  const loadMembers = useCallback(
+    async (householdId: string) => {
+      try {
+        const { data, error } = await supabase
+          .from('household_memberships')
+          .select(
+            `
+          *,
+          profile:profiles!user_id(*)
+        `
+          )
+          .eq('household_id', householdId)
+          .eq('is_active', true)
+
+        if (error) throw error
+
+        setState((prev) => ({
+          ...prev,
+          members: (data || []) as (HouseholdMembership & { profile: Profile })[],
+        }))
+      } catch (error) {
+        console.error('Error loading members:', error)
+      }
+    },
+    [supabase]
+  )
+
+  // Cargar invitaciones pendientes de un hogar
+  const loadInvitations = useCallback(
+    async (householdId: string) => {
+      try {
+        const { data, error } = await supabase
+          .from('household_invitations')
+          .select('*')
+          .eq('household_id', householdId)
+          .order('created_at', { ascending: false })
+
+        if (error) throw error
+
+        setState((prev) => ({
+          ...prev,
+          invitations: (data || []) as HouseholdInvitation[],
+        }))
+      } catch (error) {
+        console.error('Error loading invitations:', error)
+      }
+    },
+    [supabase]
+  )
+
   // Cargar hogares del usuario
   const loadHouseholds = useCallback(async (force = false) => {
     const now = Date.now()
@@ -241,48 +292,6 @@ export function useHousehold() {
     loadHouseholds()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-
-  // Cargar miembros de un hogar
-  const loadMembers = useCallback(async (householdId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('household_memberships')
-        .select(`
-          *,
-          profile:profiles!user_id(*)
-        `)
-        .eq('household_id', householdId)
-        .eq('is_active', true)
-
-      if (error) throw error
-
-      setState(prev => ({
-        ...prev,
-        members: (data || []) as (HouseholdMembership & { profile: Profile })[],
-      }))
-    } catch (error) {
-      console.error('Error loading members:', error)
-    }
-  }, [supabase])
-
-  const loadInvitations = useCallback(async (householdId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('household_invitations')
-        .select('*')
-        .eq('household_id', householdId)
-        .order('created_at', { ascending: false })
-
-      if (error) throw error
-
-      setState(prev => ({
-        ...prev,
-        invitations: (data || []) as HouseholdInvitation[],
-      }))
-    } catch (error) {
-      console.error('Error loading invitations:', error)
-    }
-  }, [supabase])
 
   // Cambiar hogar actual
   const setCurrentHousehold = useCallback((household: Household) => {
