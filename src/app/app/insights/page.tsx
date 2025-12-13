@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { useHousehold } from '@/hooks/use-household'
 import { useToast } from '@/components/ui/toast'
+import { supabaseBrowser } from '@/lib/supabase'
+import { endOp, formatSupabaseError, logOp, startOp, withRetry } from '@/lib/debug-log'
 import { formatMonth, getCurrentMonth, getCategoryColor } from '@/lib/utils'
 import { 
   Sparkles,
@@ -23,7 +25,7 @@ import {
 const DEMO_BUDGET_KEY = 'spendplan_demo_budget_v2'
 const DEMO_EXPENSES_KEY = 'spendplan_demo_expenses'
 const DEMO_CUSTOM_CATEGORIES_KEY = 'spendplan_demo_custom_categories'
-const INSIGHTS_CACHE_KEY = 'spendplan_insights_cache'
+const INSIGHTS_CACHE_PREFIX = 'spendplan_insights_cache_v2'
 
 interface InsightsReport {
   bullets: string[]
@@ -55,25 +57,29 @@ export default function InsightsPage() {
   const [generating, setGenerating] = useState(false)
   const [report, setReport] = useState<InsightsReport | null>(null)
   const currentMonth = getCurrentMonth()
+  const isDemo = isDemoMode && !!currentHousehold?.id?.startsWith('demo-')
+
+  const getCacheKey = () => {
+    const householdId = currentHousehold?.id || 'unknown'
+    return `${INSIGHTS_CACHE_PREFIX}:${householdId}:${currentMonth}`
+  }
 
   // Load data
   useEffect(() => {
     if (currentHousehold) {
       loadData()
     }
-  }, [currentHousehold])
+  }, [currentHousehold?.id, currentMonth])
 
   const loadData = () => {
     setLoading(true)
     
     // Load cached insights
-    const cached = localStorage.getItem(INSIGHTS_CACHE_KEY)
+    const cached = localStorage.getItem(getCacheKey())
     if (cached) {
       try {
-        const parsed = JSON.parse(cached)
-        if (parsed.month === currentMonth) {
-          setReport(parsed.report)
-        }
+        const parsed = JSON.parse(cached) as { month: string; report: InsightsReport }
+        if (parsed.month === currentMonth && parsed.report) setReport(parsed.report)
       } catch (e) {}
     }
     
@@ -81,40 +87,95 @@ export default function InsightsPage() {
   }
 
   const generateInsights = async () => {
+    if (!currentHousehold) return
     setGenerating(true)
+    const op = startOp('insights.generate', { householdId: currentHousehold.id, month: currentMonth, isDemo })
 
     try {
-      // Load data from localStorage
-      const budgetData = JSON.parse(localStorage.getItem(DEMO_BUDGET_KEY) || '{"items":[]}')
-      const budgetItems = budgetData.items || []
-      const allExpenses = JSON.parse(localStorage.getItem(DEMO_EXPENSES_KEY) || '[]')
-      const customCategories = JSON.parse(localStorage.getItem(DEMO_CUSTOM_CATEGORIES_KEY) || '[]')
-      const categories = [...DEMO_CATEGORIES, ...customCategories]
-      
-      const monthExpenses = allExpenses.filter((e: any) => e.expense_date?.startsWith(currentMonth))
-      
-      // Calculate totals
-      const activeIncomes = budgetItems.filter((i: any) => i.kind === 'income' && i.is_active !== false)
-      const activeVariable = budgetItems.filter((i: any) => i.kind === 'expense' && i.type === 'variable' && i.is_active !== false)
-      
-      const totalIncome = activeIncomes.reduce((sum: number, i: any) => sum + (i.amount || 0), 0)
-      const totalBudgeted = activeVariable.reduce((sum: number, i: any) => sum + (i.amount || 0), 0)
-      const totalSpent = monthExpenses.reduce((sum: number, e: any) => sum + (e.amount || 0), 0)
-      
-      // Build expenses summary
-      const expensesSummary = monthExpenses.slice(0, 30).map((e: any) => {
-        const cat = categories.find((c: any) => c.id === e.category_id)
-        return `${e.expense_date}: $${e.amount} - ${e.merchant || cat?.name || 'Sin categoría'}`
-      }).join('\n')
+      let totalIncome = 0
+      let totalBudgeted = 0
+      let totalSpent = 0
+      let expensesSummary = ''
+
+      if (isDemo) {
+        // Load data from localStorage (demo)
+        const budgetData = JSON.parse(localStorage.getItem(DEMO_BUDGET_KEY) || '{"items":[]}')
+        const budgetItems = budgetData.items || []
+        const allExpenses = JSON.parse(localStorage.getItem(DEMO_EXPENSES_KEY) || '[]')
+        const customCategories = JSON.parse(localStorage.getItem(DEMO_CUSTOM_CATEGORIES_KEY) || '[]')
+        const categories = [...DEMO_CATEGORIES, ...customCategories]
+
+        const monthExpenses = allExpenses.filter((e: any) => e.expense_date?.startsWith(currentMonth))
+        const activeIncomes = budgetItems.filter((i: any) => i.kind === 'income' && i.is_active !== false)
+        const activeVariable = budgetItems.filter((i: any) => i.kind === 'expense' && i.type === 'variable' && i.is_active !== false)
+
+        totalIncome = activeIncomes.reduce((sum: number, i: any) => sum + (i.amount || 0), 0)
+        totalBudgeted = activeVariable.reduce((sum: number, i: any) => sum + (i.amount || 0), 0)
+        totalSpent = monthExpenses.reduce((sum: number, e: any) => sum + (e.amount || 0), 0)
+        expensesSummary = monthExpenses.slice(0, 30).map((e: any) => {
+          const cat = categories.find((c: any) => c.id === e.category_id)
+          return `${e.expense_date}: $${e.amount} - ${e.merchant || cat?.name || 'Sin categoría'}`
+        }).join('\n')
+      } else {
+        // Real users: load from Supabase
+        const supabase = supabaseBrowser()
+        const startOfMonth = `${currentMonth}-01`
+        const endOfMonth = `${currentMonth}-31`
+
+        const [budgetResp, expensesResp] = await Promise.all([
+          withRetry(
+            () =>
+              supabase
+                .from('budget_items')
+                .select('id, kind, type, amount, category_id, is_active, start_date, end_date, is_indefinite')
+                .eq('household_id', currentHousehold.id),
+            { retries: 2, baseDelayMs: 250, ctx: op, step: 'select.budget_items' }
+          ),
+          withRetry(
+            () =>
+              supabase
+                .from('expenses')
+                .select('id, amount, merchant, description, expense_date, category:categories!expenses_category_id_fkey(name)')
+                .eq('household_id', currentHousehold.id)
+                .gte('expense_date', startOfMonth)
+                .lte('expense_date', endOfMonth)
+                .order('expense_date', { ascending: false })
+                .limit(300),
+            { retries: 2, baseDelayMs: 250, ctx: op, step: 'select.expenses' }
+          ),
+        ])
+
+        if (budgetResp.error) throw budgetResp.error
+        if (expensesResp.error) throw expensesResp.error
+
+        const budgetItems = budgetResp.data || []
+        const monthExpenses = expensesResp.data || []
+
+        const isItemActive = (item: any) => {
+          if (item.is_active === false) return false
+          const today = new Date().toISOString().split('T')[0]
+          if (item.start_date && item.start_date > today) return false
+          if (!item.is_indefinite && item.end_date && item.end_date < today) return false
+          return true
+        }
+
+        const activeIncomes = budgetItems.filter((i: any) => i.kind === 'income' && isItemActive(i))
+        const activeVariable = budgetItems.filter((i: any) => i.kind === 'expense' && i.type === 'variable' && isItemActive(i))
+
+        totalIncome = activeIncomes.reduce((sum: number, i: any) => sum + (parseFloat(i.amount) || 0), 0)
+        totalBudgeted = activeVariable.reduce((sum: number, i: any) => sum + (parseFloat(i.amount) || 0), 0)
+        totalSpent = monthExpenses.reduce((sum: number, e: any) => sum + (e.amount || 0), 0)
+
+        expensesSummary = monthExpenses.slice(0, 40).map((e: any) => {
+          const catName = e.category?.name
+          const label = e.merchant || e.description || catName || 'Sin categoría'
+          return `${e.expense_date}: $${e.amount} - ${label}`
+        }).join('\n')
+      }
       
       // Categories with spending
-      const categorySpending = new Map<string, number>()
-      monthExpenses.forEach((e: any) => {
-        if (e.category_id) {
-          categorySpending.set(e.category_id, (categorySpending.get(e.category_id) || 0) + e.amount)
-        }
-      })
-      
+      // (not used here; flags come from model)
+
       // Usar API Route (key segura en servidor)
       try {
         const response = await fetch('/api/ai/insights', {
@@ -142,14 +203,16 @@ export default function InsightsPage() {
           setReport(newReport)
           
           // Cache
-          localStorage.setItem(INSIGHTS_CACHE_KEY, JSON.stringify({
+          localStorage.setItem(getCacheKey(), JSON.stringify({
             month: currentMonth,
             report: newReport
           }))
           
           addToast({ type: 'success', message: 'Insights generados con IA' })
+          endOp(op, true, { totalIncome, totalBudgeted, totalSpent })
         } else {
-          throw new Error('API error')
+          const body = await response.json().catch(() => null)
+          throw new Error(body?.error || 'Error al generar insights')
         }
       } catch {
         // Fallback to mock insights
@@ -177,7 +240,7 @@ export default function InsightsPage() {
         
         setReport(mockReport)
         
-        localStorage.setItem(INSIGHTS_CACHE_KEY, JSON.stringify({
+        localStorage.setItem(getCacheKey(), JSON.stringify({
           month: currentMonth,
           report: mockReport
         }))
@@ -186,10 +249,13 @@ export default function InsightsPage() {
           type: 'info', 
           message: 'Insights generados con datos locales' 
         })
+        endOp(op, true, { totalIncome, totalBudgeted, totalSpent, fallback: true })
       }
     } catch (error) {
       console.error('Error generating insights:', error)
-      addToast({ type: 'error', message: 'Error al generar insights' })
+      logOp(op, 'error', 'generate failed', 'generateInsights', { error: formatSupabaseError(error) })
+      endOp(op, false)
+      addToast({ type: 'error', message: `Error al generar insights (opId: ${op.opId})` })
     } finally {
       setGenerating(false)
     }
