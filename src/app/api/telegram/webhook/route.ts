@@ -19,10 +19,18 @@ export const runtime = 'nodejs'
 
 // Supabase client for server-side (uses service role to bypass RLS)
 function getSupabase() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  
+  console.log('🔑 Supabase config:', { 
+    url: url?.substring(0, 30) + '...', 
+    hasServiceKey: !!serviceKey,
+    serviceKeyPrefix: serviceKey?.substring(0, 20) + '...',
+    usingKey: serviceKey ? 'SERVICE_ROLE' : 'ANON'
+  })
+  
+  return createClient(url!, serviceKey || anonKey!)
 }
 
 export async function POST(req: NextRequest) {
