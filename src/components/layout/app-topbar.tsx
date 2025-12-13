@@ -74,7 +74,7 @@ export function AppTopbar() {
         </Select>
       )}
 
-      {households.length === 1 && currentHousehold && (
+      {households.length <= 1 && currentHousehold && (
         <div className="flex items-center gap-2 text-sm">
           <Home className="h-4 w-4 text-muted-foreground" />
           <span className="font-medium">{currentHousehold.name}</span>
