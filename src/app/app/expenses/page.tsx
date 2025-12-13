@@ -152,7 +152,7 @@ export default function ExpensesPage() {
   const [budgetedCategoryIds, setBudgetedCategoryIds] = useState<string[]>([]) // Categories with variable budget
   const [searchQuery, setSearchQuery] = useState('')
   const [filterCategory, setFilterCategory] = useState<string>('all')
-  const [filterMonth, setFilterMonth] = useState(getCurrentMonth())
+  const [filterMonth, setFilterMonth] = useState(() => getCurrentMonth())
   
   // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -177,6 +177,11 @@ export default function ExpensesPage() {
       loadData()
     }
   }, [currentHousehold, filterMonth])
+
+  // Ensure we default to the current month on first mount (avoid timezone/initialization quirks)
+  useEffect(() => {
+    setFilterMonth(getCurrentMonth())
+  }, [])
 
   const loadData = async () => {
     if (!currentHousehold) return
@@ -510,17 +515,20 @@ export default function ExpensesPage() {
   // Calculate total
   const totalFiltered = filteredExpenses.reduce((sum, e) => sum + e.amount, 0)
 
-  // Generate months - include current month based on Chile timezone
+  // Generate months for selector (always includes the current month)
   const months = useMemo(() => {
-    // Get current date in Chile timezone
-    const chileTime = new Date().toLocaleString('en-US', { timeZone: 'America/Santiago' })
-    const now = new Date(chileTime)
-    const result = []
-    for (let i = 0; i < 6; i++) {
-      const date = new Date(now.getFullYear(), now.getMonth() - i, 1)
-      result.push(`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`)
+    const current = getCurrentMonth()
+    const [y, m] = current.split('-').map(Number)
+    const base = new Date(y, m - 1, 1)
+
+    const result: string[] = []
+    for (let i = 0; i < 12; i++) {
+      const d = new Date(base.getFullYear(), base.getMonth() - i, 1)
+      result.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
     }
-    return result
+
+    // Keep unique + stable order
+    return Array.from(new Set(result))
   }, [])
 
   return (
