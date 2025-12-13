@@ -255,43 +255,43 @@ export function useHousehold() {
 
     try {
       const { data: { user } } = await supabase.auth.getUser()
-      
+
       // Intentar crear en Supabase primero
       if (user) {
         try {
-          // Crear hogar
-          const { data: household, error: householdError } = await supabase
-            .from('households')
-            .insert({ name, currency, timezone })
-            .select()
-            .single()
+      // Crear hogar
+      const { data: household, error: householdError } = await supabase
+        .from('households')
+        .insert({ name, currency, timezone })
+        .select()
+        .single()
 
-          if (householdError) throw householdError
+      if (householdError) throw householdError
 
-          // Crear membresía como owner
-          const { error: membershipError } = await supabase
-            .from('household_memberships')
-            .insert({
-              household_id: household.id,
-              user_id: user.id,
-              role: 'owner',
-            })
+      // Crear membresía como owner
+      const { error: membershipError } = await supabase
+        .from('household_memberships')
+        .insert({
+          household_id: household.id,
+          user_id: user.id,
+          role: 'owner',
+        })
 
-          if (membershipError) throw membershipError
+      if (membershipError) throw membershipError
 
-          // Crear AI config por defecto (mock)
-          await supabase
-            .from('ai_config')
-            .insert({
-              household_id: household.id,
-              provider: 'mock',
-            })
+      // Crear AI config por defecto (mock)
+      await supabase
+        .from('ai_config')
+        .insert({
+          household_id: household.id,
+          provider: 'mock',
+        })
 
-          // Actualizar estado
-          await loadHouseholds()
-          setCurrentHousehold(household)
+      // Actualizar estado
+      await loadHouseholds()
+      setCurrentHousehold(household)
 
-          return { household, error: null }
+      return { household, error: null }
         } catch (supabaseError) {
           console.warn('Supabase failed, falling back to demo mode:', supabaseError)
           // Continuar con modo demo

@@ -92,7 +92,7 @@ export default function OnboardingPage() {
 
       // Marcar onboarding como completado (no bloquear si falla)
       try {
-        await completeOnboarding()
+      await completeOnboarding()
       } catch (e) {
         console.warn('Could not complete onboarding in Supabase, continuing in demo mode')
       }

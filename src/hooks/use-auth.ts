@@ -58,6 +58,7 @@ export function useAuth() {
 
   // Cargar perfil del usuario
   const loadProfile = useCallback(async (userId: string): Promise<Profile | null> => {
+    console.log('📋 Loading profile for user:', userId)
     try {
       const { data, error } = await supabase
         .from('profiles')
@@ -66,12 +67,38 @@ export function useAuth() {
         .single()
 
       if (error) {
-        console.error('Error loading profile:', error)
+        console.error('❌ Error loading profile:', error.code, error.message, error.details)
+        // Si el perfil no existe, intentar crearlo
+        if (error.code === 'PGRST116') {
+          console.log('📋 Profile not found, creating...')
+          const { data: userData } = await supabase.auth.getUser()
+          if (userData?.user) {
+            const newProfile = {
+              id: userId,
+              email: userData.user.email,
+              full_name: userData.user.user_metadata?.full_name || userData.user.email?.split('@')[0] || 'Usuario',
+              onboarding_completed: false,
+            }
+            const { data: created, error: createError } = await supabase
+              .from('profiles')
+              .insert(newProfile)
+              .select()
+              .single()
+            
+            if (createError) {
+              console.error('❌ Error creating profile:', createError)
+              return null
+            }
+            console.log('✅ Profile created:', created)
+            return created as Profile
+          }
+        }
         return null
       }
+      console.log('✅ Profile loaded:', data?.email)
       return data as Profile
     } catch (error) {
-      console.error('Error loading profile:', error)
+      console.error('❌ Exception loading profile:', error)
       return null
     }
   }, [supabase])
@@ -121,7 +148,7 @@ export function useAuth() {
           if (demoUser && demoProfile) {
             setState({ user: demoUser, profile: demoProfile, loading: false, error: null, isDemoMode: true })
           } else {
-            // En caso de error o timeout, mostrar la página de login
+          // En caso de error o timeout, mostrar la página de login
             setState({ user: null, profile: null, loading: false, error: null, isDemoMode: false })
           }
         }
@@ -147,9 +174,9 @@ export function useAuth() {
           if (demoUser && demoProfile) {
             if (isMounted) {
               setState(prev => ({ ...prev, user: demoUser, profile: demoProfile, loading: false, isDemoMode: true }))
-            }
-          } else {
-            if (isMounted) {
+          }
+        } else {
+          if (isMounted) {
               setState(prev => ({ ...prev, user: null, profile: null, loading: false, isDemoMode: false }))
             }
           }
@@ -230,21 +257,21 @@ export function useAuth() {
     setState(prev => ({ ...prev, error: null }))
     
     try {
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: metadata
-        }
-      })
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: metadata
+      }
+    })
 
-      if (error) {
+    if (error) {
         // Si Supabase falla, usar modo demo
         console.warn('Supabase signup failed, using demo mode:', error)
         return signInDemo(email, metadata?.full_name)
-      }
+    }
 
-      return { user: data.user, error: null }
+    return { user: data.user, error: null }
     } catch (e) {
       console.warn('Supabase error, using demo mode:', e)
       return signInDemo(email, metadata?.full_name)
@@ -282,19 +309,19 @@ export function useAuth() {
     }
 
     try {
-      const { error } = await supabase
-        .from('profiles')
-        .update(updates)
-        .eq('id', state.user.id)
+    const { error } = await supabase
+      .from('profiles')
+      .update(updates)
+      .eq('id', state.user.id)
 
-      if (error) {
-        return { error: error.message }
-      }
+    if (error) {
+      return { error: error.message }
+    }
 
-      // Recargar perfil
-      const profile = await loadProfile(state.user.id)
-      setState(prev => ({ ...prev, profile }))
-      return { error: null }
+    // Recargar perfil
+    const profile = await loadProfile(state.user.id)
+    setState(prev => ({ ...prev, profile }))
+    return { error: null }
     } catch (e) {
       console.warn('Supabase update failed, using demo mode')
       // Fallback a demo mode

@@ -126,7 +126,8 @@ export default function SettingsPage() {
 
   const handleGenerateTelegramCode = async () => {
     if (!profile?.id || !currentHousehold?.id) {
-      addToast({ type: 'error', message: 'Error: No se pudo obtener tu información' })
+      console.error('Missing profile or household:', { profile, currentHousehold })
+      addToast({ type: 'error', message: 'Cargando información... intenta de nuevo en unos segundos' })
       return
     }
     
@@ -136,11 +137,16 @@ export default function SettingsPage() {
         `/api/telegram/webhook?action=generate_code&user_id=${profile.id}&household_id=${currentHousehold.id}`
       )
       const data = await response.json()
-      if (data.code) {
+      if (data.error) {
+        addToast({ type: 'error', message: data.error })
+      } else if (data.code) {
         setTelegramCode(data.code)
         addToast({ type: 'success', message: 'Código generado. Expira en 10 minutos.' })
+      } else {
+        addToast({ type: 'error', message: 'Error al generar código' })
       }
     } catch (error) {
+      console.error('Telegram code error:', error)
       addToast({ type: 'error', message: 'Error al generar código' })
     } finally {
       setGeneratingCode(false)
