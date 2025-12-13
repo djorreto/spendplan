@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { useHousehold } from '@/hooks/use-household'
 import { formatCurrency, formatDate, getCurrentMonth } from '@/lib/utils'
+import { supabaseBrowser } from '@/lib/supabase'
 import { 
   Receipt,
   Plus,
@@ -15,7 +16,9 @@ import {
   TrendingDown,
   CheckCircle,
   AlertTriangle,
-  XCircle
+  XCircle,
+  Wallet,
+  Sparkles
 } from 'lucide-react'
 
 // Demo mode constants (must match budget/page.tsx)
@@ -102,6 +105,13 @@ export default function DashboardPage() {
     
     const isDemo = isDemoMode || currentHousehold.id.startsWith('demo-') || !!localStorage.getItem('spendplan_demo_user')
     
+    // Calculate days in month and days passed
+    const now = new Date()
+    const year = now.getFullYear()
+    const month = now.getMonth()
+    const daysInMonth = new Date(year, month + 1, 0).getDate()
+    const daysPassed = now.getDate()
+    
     if (isDemo) {
       const budgetData = JSON.parse(localStorage.getItem(DEMO_BUDGET_KEY) || '{"items":[]}')
       const budgetItems: BudgetItem[] = budgetData.items || []
@@ -154,13 +164,6 @@ export default function DashboardPage() {
           }
         })
       
-      // Calculate days in month and days passed
-      const now = new Date()
-      const year = now.getFullYear()
-      const month = now.getMonth()
-      const daysInMonth = new Date(year, month + 1, 0).getDate()
-      const daysPassed = now.getDate()
-      
       setData({
         totalIncome,
         totalFixed,
@@ -172,6 +175,63 @@ export default function DashboardPage() {
         daysInMonth,
         daysPassed
       })
+      setLoading(false)
+    } else {
+      // Load from Supabase for real users
+      try {
+        // Get recent expenses for this household
+        const startOfMonth = `${currentMonth}-01`
+        const supabase = supabaseBrowser()
+        const { data: expenses, error: expensesError } = await supabase
+          .from('expenses')
+          .select('*, category:categories(name)')
+          .eq('household_id', currentHousehold.id)
+          .gte('expense_date', startOfMonth)
+          .order('expense_date', { ascending: false })
+          .limit(50)
+
+        if (expensesError) {
+          console.error('Error loading expenses:', expensesError)
+        }
+
+        const monthExpenses = expenses || []
+        const totalSpent = monthExpenses.reduce((sum: number, e: { amount?: number }) => sum + (e.amount || 0), 0)
+        
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const recentExpenses = monthExpenses.slice(0, 5).map((e: any) => ({
+          id: e.id,
+          amount: e.amount,
+          description: e.description || '',
+          merchant: e.merchant || '',
+          expense_date: e.expense_date,
+          category_name: e.category?.name || 'Sin categoría'
+        }))
+
+        setData({
+          totalIncome: 0,
+          totalFixed: 0,
+          totalVariableBudget: 0,
+          totalVariableSpent: totalSpent,
+          totalUnbudgeted: 0,
+          availableReal: -totalSpent,
+          recentExpenses,
+          daysInMonth,
+          daysPassed
+        })
+      } catch (error) {
+        console.error('Error loading dashboard data:', error)
+        setData({
+          totalIncome: 0,
+          totalFixed: 0,
+          totalVariableBudget: 0,
+          totalVariableSpent: 0,
+          totalUnbudgeted: 0,
+          availableReal: 0,
+          recentExpenses: [],
+          daysInMonth,
+          daysPassed
+        })
+      }
       setLoading(false)
     }
   }
@@ -194,10 +254,23 @@ export default function DashboardPage() {
   // Calculate expected spending based on days passed
   const expectedPercent = data ? Math.round((data.daysPassed / data.daysInMonth) * 100) : 0
   
+  // Check if there's any data at all
+  const hasAnyData = data && (data.totalIncome > 0 || data.totalVariableBudget > 0 || data.recentExpenses.length > 0)
+  
   // Determine status
   const getStatus = () => {
-    if (!data || totalBudget === 0) {
-      return { icon: AlertTriangle, color: 'text-amber-600', bg: 'bg-amber-50', message: 'Aún no tienes presupuesto variable configurado.' }
+    if (!data || (!hasAnyData && totalBudget === 0)) {
+      return { 
+        icon: Sparkles, 
+        color: 'text-primary', 
+        bg: 'bg-primary/5', 
+        message: '¡Comienza configurando tu presupuesto mensual para llevar control de tus finanzas!',
+        showBudgetLink: true
+      }
+    }
+    
+    if (totalBudget === 0) {
+      return { icon: AlertTriangle, color: 'text-amber-600', bg: 'bg-amber-50', message: 'Configura tu presupuesto variable para ver el progreso del mes.' }
     }
     
     const availableReal = data.availableReal
@@ -280,6 +353,17 @@ export default function DashboardPage() {
                 {status.message}
               </p>
               
+              {'showBudgetLink' in status && status.showBudgetLink && (
+                <div className="mt-4">
+                  <Link href="/app/budget">
+                    <Button variant="default" size="sm">
+                      <Plus className="mr-2 h-4 w-4" />
+                      Configurar presupuesto
+                    </Button>
+                  </Link>
+                </div>
+              )}
+              
               {totalBudget > 0 && (
                 <div className="mt-4 space-y-2">
                   <div className="flex justify-between text-sm">
@@ -349,9 +433,23 @@ export default function DashboardPage() {
                 </div>
               ))
             ) : (
-              <p className="text-sm text-muted-foreground text-center py-8">
-                No hay gastos este mes
-              </p>
+              <div className="text-center py-8 space-y-4">
+                <div className="w-16 h-16 mx-auto rounded-full bg-primary/10 flex items-center justify-center">
+                  <Wallet className="h-8 w-8 text-primary" />
+                </div>
+                <div>
+                  <p className="font-medium text-lg">¡Bienvenido a SpendPlan!</p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Comienza registrando tu primer gasto del mes
+                  </p>
+                </div>
+                <Link href="/app/expenses/new">
+                  <Button className="mt-2">
+                    <Plus className="mr-2 h-4 w-4" />
+                    Registrar primer gasto
+                  </Button>
+                </Link>
+              </div>
             )}
           </div>
         </CardContent>
