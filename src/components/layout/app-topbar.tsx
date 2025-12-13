@@ -102,8 +102,8 @@ export function AppTopbar() {
             <Button variant="ghost" className="flex items-center gap-2 px-2">
               <Avatar className="h-8 w-8 ring-2 ring-primary/20 bg-muted">
                 <AvatarImage src={profile?.avatar_url || undefined} alt={profile?.full_name || ''} />
-                <AvatarFallback className="bg-primary text-primary-foreground">
-                  <User className="h-4 w-4" />
+                <AvatarFallback className="bg-primary text-primary-foreground flex items-center justify-center">
+                  <User className="h-5 w-5" />
                 </AvatarFallback>
               </Avatar>
               <div className="hidden md:block text-left">
@@ -116,6 +116,10 @@ export function AppTopbar() {
           <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuLabel>Mi Cuenta</DropdownMenuLabel>
             <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => router.push('/app/dashboard')}>
+              <Home className="mr-2 h-4 w-4" />
+              Inicio
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={() => router.push('/app/settings')}>
               <User className="mr-2 h-4 w-4" />
               Perfil
