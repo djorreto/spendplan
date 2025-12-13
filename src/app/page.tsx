@@ -118,7 +118,7 @@ export default function HomePage() {
             </h1>
             <p className="text-xl text-muted-foreground mb-8 leading-relaxed animate-slide-up" style={{ animationDelay: '100ms' }}>
               SpendPlan te ayuda a presupuestar, registrar y visualizar los gastos de tu familia. 
-              Registra gastos por WhatsApp, importa tu cartola bancaria y recibe recomendaciones con IA.
+              Registra gastos por Telegram, importa tu cartola bancaria y recibe recomendaciones con IA.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center animate-slide-up" style={{ animationDelay: '200ms' }}>
               <Link href="/login?mode=signup">
@@ -147,7 +147,7 @@ export default function HomePage() {
                   </div>
                   <span className="text-xs text-muted-foreground ml-2">SpendPlan Dashboard</span>
                 </div>
-                <div className="p-6 grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="p-4 sm:p-6 grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
                   <StatsPreview label="Gastado este mes" value="$485.200" trend="-12%" positive />
                   <StatsPreview label="Presupuesto usado" value="68%" trend="En control" positive />
                   <StatsPreview label="Transacciones" value="47" />
@@ -155,6 +155,9 @@ export default function HomePage() {
                 </div>
               </div>
             </div>
+            <p className="mt-3 text-center text-xs text-muted-foreground">
+              Vista referencial. Los valores e interfaz pueden variar según tu configuración.
+            </p>
           </div>
         </div>
       </section>
@@ -181,12 +184,12 @@ export default function HomePage() {
             <FeatureCard
               icon={Receipt}
               title="Registro Rápido"
-              description="Agrega gastos en segundos. Manual, por WhatsApp o importando tu cartola bancaria."
+              description="Agrega gastos en segundos. Manual, por Telegram o importando tu cartola bancaria."
               color="secondary"
             />
             <FeatureCard
               icon={MessageSquare}
-              title="WhatsApp Integrado"
+              title="Telegram Integrado"
               description="Envía 'Jumbo 45.300 débito' y listo. También puedes enviar fotos de boletas."
               color="accent"
             />
@@ -235,7 +238,7 @@ export default function HomePage() {
             <StepCard
               number={3}
               title="Registra tus Gastos"
-              description="Agrega gastos manualmente, por WhatsApp o importando tu cartola. La IA te ayuda a categorizar."
+              description="Agrega gastos manualmente, por Telegram o importando tu cartola. La IA te ayuda a categorizar."
             />
           </div>
         </div>
@@ -285,7 +288,7 @@ export default function HomePage() {
                   <PricingFeature included>Dashboard completo con gráficos</PricingFeature>
                   <PricingFeature included>Presupuesto mensual ilimitado</PricingFeature>
                   <PricingFeature included>Gastos ilimitados</PricingFeature>
-                  <PricingFeature included>Registro por WhatsApp</PricingFeature>
+                  <PricingFeature included>Registro por Telegram</PricingFeature>
                   <PricingFeature included>Importación CSV bancario</PricingFeature>
                   <PricingFeature included>Categorización con IA</PricingFeature>
                   <PricingFeature included>Insights mensuales con IA</PricingFeature>

@@ -421,8 +421,8 @@ export default function DashboardPage() {
             <div className={`p-3 rounded-full ${status.bg}`}>
               <StatusIcon className={`h-6 w-6 ${status.color}`} />
             </div>
-            <div className="flex-1">
-              <p className={`text-lg font-medium ${status.color}`}>
+            <div className="flex-1 min-w-0">
+              <p className={`text-base sm:text-lg font-medium leading-snug break-words ${status.color}`}>
                 {status.message}
               </p>
               

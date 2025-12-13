@@ -16,7 +16,6 @@ interface HouseholdState {
 
 // Cache y debounce
 let householdCache: { households: Household[], timestamp: number } | null = null
-let lastHouseholdLoad = 0
 const CACHE_TTL = 30000 // 30 segundos
 
 // Demo mode helpers
@@ -47,6 +46,9 @@ export function useHousehold() {
     isDemoMode: false,
   })
 
+  // Debounce por instancia (evita quedarse en loading al volver desde Home)
+  const lastHouseholdLoadRef = useRef(0)
+
   // Usar singleton
   const supabase = supabaseBrowser()
 
@@ -54,18 +56,21 @@ export function useHousehold() {
   const loadHouseholds = useCallback(async (force = false) => {
     // Debounce: evitar múltiples llamadas (pero permitir la primera)
     const now = Date.now()
-    if (!force && lastHouseholdLoad > 0 && now - lastHouseholdLoad < 2000) {
+    if (!force && lastHouseholdLoadRef.current > 0 && now - lastHouseholdLoadRef.current < 2000) {
       console.log('🏠 Skipping household load (too soon)')
+      // IMPORTANTE: no dejar loading=true
+      setState(prev => ({ ...prev, loading: false }))
       return
     }
-    lastHouseholdLoad = now
+    lastHouseholdLoadRef.current = now
     console.log('🏠 Loading households...')
     
     try {
       // Primero verificar si hay un hogar demo guardado
       const demoHousehold = getDemoHousehold()
       
-      const { data: { user } } = await supabase.auth.getUser()
+      const { data: { session } } = await supabase.auth.getSession()
+      const user = session?.user || (await supabase.auth.getUser()).data.user
       if (!user) {
         // Si no hay usuario pero hay demo, usar demo
         if (demoHousehold) {
@@ -191,6 +196,12 @@ export function useHousehold() {
       }))
     }
   }, [supabase])
+
+  // Cargar hogares al montar / cuando cambie sesión
+  useEffect(() => {
+    loadHouseholds()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Cargar miembros de un hogar
   const loadMembers = useCallback(async (householdId: string) => {

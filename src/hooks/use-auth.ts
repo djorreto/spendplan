@@ -15,7 +15,6 @@ interface AuthState {
 
 // Cache para evitar múltiples llamadas
 let profileCache: { [userId: string]: Profile } = {}
-let lastAuthCheck = 0
 
 // Demo mode helpers
 const DEMO_USER_KEY = 'spendplan_demo_user'
@@ -56,6 +55,9 @@ export function useAuth() {
     error: null,
     isDemoMode: false,
   })
+
+  // Debounce por instancia (evita “quedarse cargando” al remonte rápido)
+  const lastAuthCheckRef = useRef(0)
 
   // Usar singleton
   const supabase = supabaseBrowser()
@@ -122,11 +124,15 @@ export function useAuth() {
     const checkUser = async () => {
       // Evitar múltiples llamadas en corto tiempo (pero permitir la primera)
       const now = Date.now()
-      if (lastAuthCheck > 0 && now - lastAuthCheck < 2000) {
+      if (lastAuthCheckRef.current > 0 && now - lastAuthCheckRef.current < 2000) {
         console.log('📋 Skipping auth check (too soon)')
+        // IMPORTANTE: no dejar loading=true, reutilizar el estado actual
+        if (isMounted) {
+          setState(prev => ({ ...prev, loading: false }))
+        }
         return
       }
-      lastAuthCheck = now
+      lastAuthCheckRef.current = now
       console.log('📋 Checking auth...')
       
       try {
@@ -134,8 +140,12 @@ export function useAuth() {
         const demoUser = getDemoUser()
         const demoProfile = getDemoProfile()
         
-        // Sin timeout - dejamos que Supabase responda
-        const { data: { user } } = await supabase.auth.getUser()
+        // Preferir session local (más rápido) y luego validar user
+        const { data: { session } } = await supabase.auth.getSession()
+        const sessionUser = session?.user || null
+        const { data: { user } } = sessionUser
+          ? { data: { user: sessionUser } }
+          : await supabase.auth.getUser()
         
         if (!isMounted) return
         
