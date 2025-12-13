@@ -20,6 +20,7 @@ import { useHousehold } from '@/hooks/use-household'
 import { useToast } from '@/components/ui/toast'
 import { supabaseBrowser } from '@/lib/supabase'
 import { getInitials } from '@/lib/utils'
+import { DebugLogPanel } from '@/components/ui/debug-log-panel'
 import { 
   User,
   Home,
@@ -170,7 +171,7 @@ export default function SettingsPage() {
       </div>
 
       <Tabs defaultValue="profile">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="profile">
             <User className="h-4 w-4 mr-2" />
             Perfil
@@ -186,6 +187,9 @@ export default function SettingsPage() {
           <TabsTrigger value="integrations">
             <Send className="h-4 w-4 mr-2" />
             Integraciones
+          </TabsTrigger>
+          <TabsTrigger value="debug">
+            Debug
           </TabsTrigger>
         </TabsList>
 
@@ -424,6 +428,11 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
 
+        </TabsContent>
+
+        {/* Debug Tab */}
+        <TabsContent value="debug" className="space-y-6">
+          <DebugLogPanel />
         </TabsContent>
       </Tabs>
     </div>

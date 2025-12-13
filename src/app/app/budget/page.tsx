@@ -68,6 +68,7 @@ import {
 import type { Category, Expense } from '@/types'
 import { supabaseBrowser } from '@/lib/supabase'
 import { useAuth } from '@/hooks/use-auth'
+import { endOp, formatSupabaseError, logOp, startOp, withRetry } from '@/lib/debug-log'
 import {
   BarChart,
   Bar,
@@ -180,19 +181,29 @@ function saveBudgetData(data: BudgetData) {
 // Supabase functions for budget items
 async function loadBudgetItemsFromSupabase(householdId: string): Promise<BudgetItem[]> {
   const supabase = supabaseBrowser()
-  const { data, error } = await supabase
-    .from('budget_items')
-    .select('*')
-    .eq('household_id', householdId)
-    .order('created_at', { ascending: true })
+  const op = startOp('budget.loadItems', { householdId })
+  const resp = await withRetry(
+    () =>
+      supabase
+        .from('budget_items')
+        .select('*')
+        .eq('household_id', householdId)
+        .order('created_at', { ascending: true }),
+    { retries: 2, baseDelayMs: 250, ctx: op, step: 'select.budget_items' }
+  )
   
-  if (error) {
-    console.error('Error loading budget items:', error)
+  if (resp.error) {
+    console.error('Error loading budget items:', resp.error)
+    logOp(op, 'error', 'budget_items select failed', 'select.budget_items', {
+      error: formatSupabaseError(resp.error),
+    })
+    endOp(op, false)
     return []
   }
+  endOp(op, true, { count: resp.data?.length || 0 })
   
   // Transform from DB format to app format
-  return (data || []).map(item => ({
+  return (resp.data || []).map(item => ({
     id: item.id,
     kind: item.kind as ItemKind,
     type: item.type as BudgetType,
@@ -219,6 +230,7 @@ async function saveBudgetItemToSupabase(
   userId: string
 ): Promise<{ success: boolean; error?: string; id?: string }> {
   const supabase = supabaseBrowser()
+  const op = startOp('budget.saveItem', { householdId, userId, itemId: item.id, kind: item.kind, type: item.type })
   
   // Check if this is a new item (non-UUID id) or existing
   const isNewItem = item.id.startsWith('item-')
@@ -242,46 +254,66 @@ async function saveBudgetItemToSupabase(
   
   if (isNewItem) {
     // Insert new item, let Supabase generate UUID
-    const { data, error } = await supabase
-      .from('budget_items')
-      .insert(dbItem)
-      .select('id')
-      .single()
+    const resp = await withRetry(
+      () =>
+        supabase
+          .from('budget_items')
+          .insert(dbItem)
+          .select('id')
+          .single(),
+      { retries: 2, baseDelayMs: 250, ctx: op, step: 'insert.budget_item' }
+    )
     
-    if (error) {
-      console.error('Error inserting budget item:', error)
-      return { success: false, error: error.message }
+    if (resp.error) {
+      console.error('Error inserting budget item:', resp.error)
+      logOp(op, 'error', 'insert failed', 'insert.budget_item', { error: formatSupabaseError(resp.error) })
+      endOp(op, false)
+      return { success: false, error: (resp.error as Error).message }
     }
     
-    return { success: true, id: data?.id }
+    endOp(op, true, { id: resp.data?.id })
+    return { success: true, id: resp.data?.id }
   } else {
     // Update existing item
     dbItem.id = item.id
-    const { error } = await supabase
-      .from('budget_items')
-      .update(dbItem)
-      .eq('id', item.id)
+    const resp = await withRetry(
+      () =>
+        supabase
+          .from('budget_items')
+          .update(dbItem)
+          .eq('id', item.id)
+          .select('id')
+          .single(),
+      { retries: 2, baseDelayMs: 250, ctx: op, step: 'update.budget_item' }
+    )
     
-    if (error) {
-      console.error('Error updating budget item:', error)
-      return { success: false, error: error.message }
+    if (resp.error) {
+      console.error('Error updating budget item:', resp.error)
+      logOp(op, 'error', 'update failed', 'update.budget_item', { error: formatSupabaseError(resp.error) })
+      endOp(op, false)
+      return { success: false, error: (resp.error as Error).message }
     }
     
+    endOp(op, true, { id: item.id })
     return { success: true, id: item.id }
   }
 }
 
 async function deleteBudgetItemFromSupabase(itemId: string): Promise<boolean> {
   const supabase = supabaseBrowser()
-  const { error } = await supabase
-    .from('budget_items')
-    .delete()
-    .eq('id', itemId)
+  const op = startOp('budget.deleteItem', { itemId })
+  const resp = await withRetry(
+    () => supabase.from('budget_items').delete().eq('id', itemId),
+    { retries: 2, baseDelayMs: 250, ctx: op, step: 'delete.budget_item' }
+  )
   
-  if (error) {
-    console.error('Error deleting budget item:', error)
+  if (resp.error) {
+    console.error('Error deleting budget item:', resp.error)
+    logOp(op, 'error', 'delete failed', 'delete.budget_item', { error: formatSupabaseError(resp.error) })
+    endOp(op, false)
     return false
   }
+  endOp(op, true)
   return true
 }
 
@@ -507,18 +539,24 @@ export default function BudgetPage() {
       saveBudgetData({ items: budgetItems })
       addToast({ type: 'success', message: 'Presupuesto guardado' })
     } else if (currentHousehold && profile) {
+      const op = startOp('budget.saveAll', { householdId: currentHousehold.id, itemCount: budgetItems.length })
       // Save all items to Supabase
       let hasError = false
+      const failures: Array<{ itemId: string; error: string }> = []
       for (const item of budgetItems) {
         const result = await saveBudgetItemToSupabase(item, currentHousehold.id, profile.id)
         if (!result.success) {
           hasError = true
+          failures.push({ itemId: item.id, error: result.error || 'desconocido' })
         }
       }
       if (hasError) {
-        addToast({ type: 'error', message: 'Error al guardar algunos items' })
+        logOp(op, 'error', 'some items failed', 'saveAll', { failures })
+        endOp(op, false, { failuresCount: failures.length })
+        addToast({ type: 'error', message: `Error al guardar algunos items (opId: ${op.opId})` })
       } else {
-        addToast({ type: 'success', message: 'Presupuesto guardado' })
+        endOp(op, true)
+        addToast({ type: 'success', message: `Presupuesto guardado (opId: ${op.opId})` })
       }
     }
     

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -48,6 +48,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import type { Expense, Category, PaymentMethod } from '@/types'
+import { endOp, formatSupabaseError, logOp, startOp, withRetry } from '@/lib/debug-log'
 
 // Demo mode helpers
 const DEMO_EXPENSES_KEY = 'spendplan_demo_expenses'
@@ -208,33 +209,61 @@ export default function ExpensesPage() {
     }
 
     const supabase = supabaseBrowser()
+    const op = startOp('expenses.loadData', { householdId: currentHousehold.id, filterMonth })
 
     try {
       // Load categories
-      const { data: cats } = await supabase
-        .from('categories')
-        .select('*')
-        .or(`household_id.eq.${currentHousehold.id},is_system.eq.true`)
-        .eq('is_active', true)
-        .order('sort_order')
+      const catsResp = await withRetry(
+        () =>
+          supabase
+            .from('categories')
+            .select('*')
+            .or(`household_id.eq.${currentHousehold.id},is_system.eq.true`)
+            .eq('is_active', true)
+            .order('sort_order'),
+        { retries: 2, baseDelayMs: 250, ctx: op, step: 'select.categories' }
+      )
 
-      setCategories(cats || [])
+      if (catsResp.error) {
+        logOp(op, 'error', 'categories select failed', 'select.categories', {
+          error: formatSupabaseError(catsResp.error),
+        })
+        throw catsResp.error
+      }
+
+      setCategories(catsResp.data || [])
 
       // Load expenses
-      const { data: exps } = await supabase
-        .from('expenses')
-        .select(`
+      const expsResp = await withRetry(
+        () =>
+          supabase
+            .from('expenses')
+            .select(
+              `
           *,
           category:categories!expenses_category_id_fkey(*)
-        `)
-        .eq('household_id', currentHousehold.id)
-        .gte('expense_date', `${filterMonth}-01`)
-        .lte('expense_date', `${filterMonth}-31`)
-        .order('expense_date', { ascending: false })
+        `
+            )
+            .eq('household_id', currentHousehold.id)
+            .gte('expense_date', `${filterMonth}-01`)
+            .lte('expense_date', `${filterMonth}-31`)
+            .order('expense_date', { ascending: false }),
+        { retries: 2, baseDelayMs: 250, ctx: op, step: 'select.expenses' }
+      )
 
-      setExpenses(exps || [])
+      if (expsResp.error) {
+        logOp(op, 'error', 'expenses select failed', 'select.expenses', {
+          error: formatSupabaseError(expsResp.error),
+        })
+        throw expsResp.error
+      }
+
+      setExpenses(expsResp.data || [])
+      endOp(op, true, { categories: catsResp.data?.length || 0, expenses: expsResp.data?.length || 0 })
     } catch (error) {
       console.error('Error loading expenses:', error)
+      endOp(op, false, { error: formatSupabaseError(error) })
+      addToast({ type: 'error', message: `Error al cargar gastos (opId: ${op.opId})` })
       // Fallback to demo mode
       setCategories(getAllCategories())
       setExpenses([])
@@ -381,35 +410,53 @@ export default function ExpensesPage() {
 
     // Supabase mode
     const supabase = supabaseBrowser()
+    const op = startOp('expenses.save', {
+      householdId: currentHousehold.id,
+      userId: user.id,
+      editing: !!editingExpense,
+    })
 
     try {
       if (editingExpense) {
-        const { error } = await supabase
-          .from('expenses')
-          .update(expenseData)
-          .eq('id', editingExpense.id)
-
-        if (error) throw error
+        const resp = await withRetry(
+          () =>
+            supabase
+              .from('expenses')
+              .update(expenseData)
+              .eq('id', editingExpense.id)
+              .select('id')
+              .single(),
+          { retries: 2, baseDelayMs: 250, ctx: op, step: 'update.expense' }
+        )
+        if (resp.error) throw resp.error
         addToast({ type: 'success', message: 'Gasto actualizado' })
       } else {
-        const { error } = await supabase
-          .from('expenses')
-          .insert({
-            ...expenseData,
-            created_by: user.id,
-            source: 'manual',
-            status: 'confirmed',
-          })
-
-        if (error) throw error
+        const resp = await withRetry(
+          () =>
+            supabase
+              .from('expenses')
+              .insert({
+                ...expenseData,
+                created_by: user.id,
+                source: 'manual',
+                status: 'confirmed',
+              })
+              .select('id')
+              .single(),
+          { retries: 2, baseDelayMs: 250, ctx: op, step: 'insert.expense' }
+        )
+        if (resp.error) throw resp.error
         addToast({ type: 'success', message: 'Gasto registrado' })
       }
 
       setDialogOpen(false)
+      endOp(op, true)
       loadData()
     } catch (error) {
       console.error('Error saving expense:', error)
-      addToast({ type: 'error', message: 'Error al guardar gasto' })
+      logOp(op, 'error', 'save failed', 'save', { error: formatSupabaseError(error) })
+      endOp(op, false)
+      addToast({ type: 'error', message: `Error al guardar gasto (opId: ${op.opId})` })
     } finally {
       setSaving(false)
     }
@@ -429,18 +476,21 @@ export default function ExpensesPage() {
     }
 
     const supabase = supabaseBrowser()
+    const op = startOp('expenses.delete', { id })
 
     try {
-      const { error } = await supabase
-        .from('expenses')
-        .delete()
-        .eq('id', id)
-
-      if (error) throw error
+      const resp = await withRetry(
+        () => supabase.from('expenses').delete().eq('id', id),
+        { retries: 2, baseDelayMs: 250, ctx: op, step: 'delete.expense' }
+      )
+      if (resp.error) throw resp.error
       addToast({ type: 'success', message: 'Gasto eliminado' })
+      endOp(op, true)
       loadData()
     } catch (error) {
-      addToast({ type: 'error', message: 'Error al eliminar gasto' })
+      logOp(op, 'error', 'delete failed', 'delete', { error: formatSupabaseError(error) })
+      endOp(op, false)
+      addToast({ type: 'error', message: `Error al eliminar gasto (opId: ${op.opId})` })
     }
   }
 
@@ -459,7 +509,7 @@ export default function ExpensesPage() {
   const totalFiltered = filteredExpenses.reduce((sum, e) => sum + e.amount, 0)
 
   // Generate months - include current month based on Chile timezone
-  const months = React.useMemo(() => {
+  const months = useMemo(() => {
     // Get current date in Chile timezone
     const chileTime = new Date().toLocaleString('en-US', { timeZone: 'America/Santiago' })
     const now = new Date(chileTime)

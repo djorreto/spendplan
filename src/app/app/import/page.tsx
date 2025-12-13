@@ -27,6 +27,7 @@ import { useAuth } from '@/hooks/use-auth'
 import { useToast } from '@/components/ui/toast'
 import { supabaseBrowser } from '@/lib/supabase'
 import { formatCurrency, formatDate, generateId } from '@/lib/utils'
+import { endOp, formatSupabaseError, isLikelyDuplicateError, isLikelyRlsOrAuthError, logOp, startOp, withRetry } from '@/lib/debug-log'
 import { 
   Upload,
   FileSpreadsheet,
@@ -181,6 +182,12 @@ export default function ImportPage() {
     const batchId = generateId()
     let imported = 0
     let skipped = 0
+    const op = startOp('import.csv', {
+      householdId: currentHousehold.id,
+      userId: user.id,
+      selectedCount: selected.length,
+      batchId,
+    })
 
     try {
       // Insert bank transactions
@@ -194,28 +201,72 @@ export default function ImportPage() {
         imported_by: user.id
       }))
 
-      const { error: txError } = await supabase
-        .from('bank_transactions')
-        .insert(bankTxData)
+      const txResp = await withRetry(
+        () => supabase.from('bank_transactions').insert(bankTxData),
+        { retries: 2, baseDelayMs: 300, ctx: op, step: 'insert.bank_transactions' }
+      )
+      if (txResp.error) throw txResp.error
 
-      if (txError) throw txError
+      // Validate: count inserted for this batch (head-only count)
+      const countResp = await withRetry(
+        () =>
+          supabase
+            .from('bank_transactions')
+            .select('id', { count: 'exact', head: true })
+            .eq('import_batch_id', batchId)
+            .eq('household_id', currentHousehold.id),
+        { retries: 2, baseDelayMs: 300, ctx: op, step: 'validate.bank_transactions.count' }
+      )
+      if (countResp.error) throw countResp.error
+      const insertedCount = countResp.count ?? null
+      if (insertedCount !== null && insertedCount !== selected.length) {
+        logOp(op, 'warn', 'bank_transactions count mismatch', 'validate.bank_transactions.count', {
+          expected: selected.length,
+          actual: insertedCount,
+        })
+      }
 
       // Create expenses
+      const failures: Array<{ transactionId: string; error: Record<string, unknown> }> = []
       for (const t of selected) {
-        const { error } = await supabase
-          .from('expenses')
-          .insert({
-            household_id: currentHousehold.id,
-            amount: t.amount,
-            description: t.description,
-            expense_date: t.date,
-            source: 'csv_import',
-            status: 'confirmed',
-            created_by: user.id
+        const expResp = await withRetry(
+          () =>
+            supabase
+              .from('expenses')
+              .insert({
+                household_id: currentHousehold.id,
+                amount: t.amount,
+                description: t.description,
+                expense_date: t.date,
+                source: 'csv_import',
+                status: 'confirmed',
+                created_by: user.id,
+              })
+              .select('id')
+              .single(),
+          { retries: 2, baseDelayMs: 300, ctx: op, step: 'insert.expense' }
+        )
+
+        if (expResp.error) {
+          // If it's a unique constraint violation, treat as duplicate/skip.
+          if (isLikelyDuplicateError(expResp.error)) {
+            skipped++
+            logOp(op, 'info', 'duplicate expense skipped', 'insert.expense', {
+              transactionId: t.id,
+              error: formatSupabaseError(expResp.error),
+            })
+            continue
+          }
+          failures.push({ transactionId: t.id, error: formatSupabaseError(expResp.error) })
+          logOp(op, 'error', 'expense insert failed', 'insert.expense', {
+            transactionId: t.id,
+            error: formatSupabaseError(expResp.error),
           })
 
-        if (error) {
-          skipped++
+          // If this looks like RLS/auth, fail fast (no more "silencing").
+          if (isLikelyRlsOrAuthError(expResp.error)) {
+            throw expResp.error
+          }
         } else {
           imported++
         }
@@ -223,10 +274,20 @@ export default function ImportPage() {
 
       setImportResults({ imported, skipped })
       setStep('done')
-      addToast({ type: 'success', message: `${imported} gastos importados` })
+      endOp(op, true, { imported, skipped })
+      if (failures.length > 0) {
+        addToast({
+          type: 'warning',
+          message: `${imported} importados, ${failures.length} fallaron (opId: ${op.opId})`,
+        })
+      } else {
+        addToast({ type: 'success', message: `${imported} gastos importados (opId: ${op.opId})` })
+      }
     } catch (error) {
       console.error('Import error:', error)
-      addToast({ type: 'error', message: 'Error al importar' })
+      logOp(op, 'error', 'import failed', 'import', { error: formatSupabaseError(error) })
+      endOp(op, false)
+      addToast({ type: 'error', message: `Error al importar (opId: ${op.opId})` })
     } finally {
       setImporting(false)
     }
