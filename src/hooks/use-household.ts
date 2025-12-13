@@ -357,7 +357,7 @@ export function useHousehold() {
       // Reload with timeout to avoid hanging
       await Promise.race([
         loadHouseholds(),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 5000))
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 15000))
       ]).catch(e => console.warn('🏠 loadHouseholds timeout or error:', e))
       
       return { error: null }
