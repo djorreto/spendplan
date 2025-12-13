@@ -57,6 +57,26 @@ En **Supabase Dashboard > SQL Editor**, ejecuta en orden:
 1. `database/migrations/001-spendplan-schema.sql` - Tablas e índices
 2. `database/migrations/002-spendplan-rls.sql` - Políticas de seguridad
 3. `database/migrations/003-spendplan-seeds.sql` - Categorías por defecto
+4. `database/migrations/005-telegram-session.sql` - Sesión conversacional Telegram
+5. `database/migrations/006-beta-allowlist.sql` - Beta privada (allowlist)
+
+---
+
+## 🔒 Beta privada (allowlist)
+
+SpendPlan puede correr en **beta privada**, donde solo usuarios con email explícitamente invitado pueden registrarse y usar la app.
+
+- **Agregar/quitar acceso**: En Supabase, agrega o elimina filas en `public.beta_allowlist` (emails en minúsculas).
+
+```sql
+insert into public.beta_allowlist (email) values ('tu@email.com');
+```
+
+- **Desactivar beta privada**: En variables de entorno (Vercel o `.env.local`), setea:
+
+```env
+BETA_MODE=false
+```
 
 ### 4. Crear buckets de Storage
 

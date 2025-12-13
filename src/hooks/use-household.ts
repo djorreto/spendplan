@@ -64,19 +64,6 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): 
   })
 }
 
-// Demo mode helpers
-const DEMO_STORAGE_KEY = 'spendplan_demo_household'
-
-function getDemoHousehold(): Household | null {
-  if (typeof window === 'undefined') return null
-  const saved = localStorage.getItem(DEMO_STORAGE_KEY)
-  return saved ? JSON.parse(saved) : null
-}
-
-function saveDemoHousehold(household: Household) {
-  localStorage.setItem(DEMO_STORAGE_KEY, JSON.stringify(household))
-}
-
 /**
  * Hook para manejar hogares del usuario
  * Soporta modo demo con localStorage cuando Supabase no está disponible
@@ -189,32 +176,9 @@ export function useHousehold() {
     const run = (async () => {
     
     try {
-      // Primero verificar si hay un hogar demo guardado
-      const demoHousehold = getDemoHousehold()
-      
       const { data: { session } } = await supabase.auth.getSession()
       const user = session?.user || (await supabase.auth.getUser()).data.user
       if (!user) {
-        // Si no hay usuario pero hay demo, usar demo
-        if (demoHousehold) {
-          setState(prev => ({
-            ...prev,
-            households: [demoHousehold],
-            currentHousehold: demoHousehold,
-            membership: {
-              id: 'demo-membership',
-              household_id: demoHousehold.id,
-              user_id: 'demo-user',
-              role: 'owner',
-              is_active: true,
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-            } as HouseholdMembership,
-            loading: false,
-            isDemoMode: true,
-          }))
-          return
-        }
         setState(prev => ({ ...prev, loading: false }))
         return
       }
@@ -237,27 +201,6 @@ export function useHousehold() {
       console.log('🏠 Memberships result:', { memberships, error })
 
       if (error) {
-        console.warn('🏠 Supabase error, checking demo mode:', error)
-        // Si hay error de Supabase pero hay demo, usar demo
-        if (demoHousehold) {
-          setState(prev => ({
-            ...prev,
-            households: [demoHousehold],
-            currentHousehold: demoHousehold,
-            membership: {
-              id: 'demo-membership',
-              household_id: demoHousehold.id,
-              user_id: user.id,
-              role: 'owner',
-              is_active: true,
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-            } as HouseholdMembership,
-            loading: false,
-            isDemoMode: true,
-          }))
-          return
-        }
         throw error
       }
 
@@ -298,29 +241,6 @@ export function useHousehold() {
     } catch (error) {
       console.error('Error loading households:', error)
       logOp(op, 'error', 'load failed', 'loadHouseholds', { error: formatSupabaseError(error) })
-      
-      // Fallback a demo mode
-      const demoHousehold = getDemoHousehold()
-      if (demoHousehold) {
-        setState(prev => ({
-          ...prev,
-          households: [demoHousehold],
-          currentHousehold: demoHousehold,
-          membership: {
-            id: 'demo-membership',
-            household_id: demoHousehold.id,
-            user_id: 'demo-user',
-            role: 'owner',
-            is_active: true,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          } as HouseholdMembership,
-          loading: false,
-          isDemoMode: true,
-          error: null,
-        }))
-        return
-      }
       
       setState(prev => ({
         ...prev,
@@ -371,53 +291,12 @@ export function useHousehold() {
     timezone: string = 'America/Santiago'
   ) => {
     console.log('🏠 Creating household:', name)
-    
-    // Verificar si estamos en modo demo (verificar localStorage primero)
-    const demoUserStr = typeof window !== 'undefined' ? localStorage.getItem('spendplan_demo_user') : null
-    const isDemoUser = !!demoUserStr
-    
-    if (isDemoUser) {
-      console.log('🎭 Demo mode detected, creating local household')
-      // Modo demo: crear hogar en localStorage directamente
-      const demoHousehold: Household = {
-        id: `demo-${Date.now()}`,
-        name,
-        currency,
-        timezone,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }
-
-      saveDemoHousehold(demoHousehold)
-      localStorage.setItem('currentHouseholdId', demoHousehold.id)
-
-      const demoUser = JSON.parse(demoUserStr)
-      setState(prev => ({
-        ...prev,
-        households: [demoHousehold],
-        currentHousehold: demoHousehold,
-        membership: {
-          id: 'demo-membership',
-          household_id: demoHousehold.id,
-          user_id: demoUser?.id || 'demo-user',
-          role: 'owner',
-          is_active: true,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        } as HouseholdMembership,
-        isDemoMode: true,
-      }))
-
-      console.log('🏠 Demo household created:', demoHousehold.id)
-      return { household: demoHousehold, error: null }
-    }
 
     try {
       const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return { household: null, error: 'No autenticado' }
 
       // Intentar crear en Supabase primero
-      if (user) {
-        try {
       // Crear hogar
       const { data: household, error: householdError } = await supabase
         .from('households')
@@ -451,42 +330,6 @@ export function useHousehold() {
       setCurrentHousehold(household)
 
       return { household, error: null }
-        } catch (supabaseError) {
-          console.warn('Supabase failed, falling back to demo mode:', supabaseError)
-          // Continuar con modo demo
-        }
-      }
-
-      // Modo demo: crear hogar en localStorage
-      const demoHousehold: Household = {
-        id: `demo-${Date.now()}`,
-        name,
-        currency,
-        timezone,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }
-
-      saveDemoHousehold(demoHousehold)
-      localStorage.setItem('currentHouseholdId', demoHousehold.id)
-
-      setState(prev => ({
-        ...prev,
-        households: [demoHousehold],
-        currentHousehold: demoHousehold,
-        membership: {
-          id: 'demo-membership',
-          household_id: demoHousehold.id,
-          user_id: user?.id || 'demo-user',
-          role: 'owner',
-          is_active: true,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        } as HouseholdMembership,
-        isDemoMode: true,
-      }))
-
-      return { household: demoHousehold, error: null }
     } catch (error) {
       console.error('Error creating household:', error)
       return { household: null, error: 'Error al crear hogar' }

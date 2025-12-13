@@ -11,14 +11,15 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Logo } from '@/components/ui/logo'
 import { useToast } from '@/components/ui/toast'
 import { Loading } from '@/components/ui/loading'
-import { Eye, EyeOff, ArrowLeft, Mail, Lock, User, Sparkles } from 'lucide-react'
+import { Eye, EyeOff, ArrowLeft, Mail, Lock, User } from 'lucide-react'
+import { PRIVATE_BETA_BLOCK_MESSAGE } from '@/lib/beta-allowlist'
 
 type Mode = 'login' | 'signup' | 'forgot'
 
 export default function LoginPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { signIn, signInDemo, signUp, resetPassword, loading: authLoading, isAuthenticated } = useAuth()
+  const { signIn, signUp, resetPassword, loading: authLoading, isAuthenticated } = useAuth()
   const { addToast } = useToast()
   
   const [mode, setMode] = useState<Mode>('login')
@@ -34,6 +35,14 @@ export default function LoginPage() {
     if (urlMode === 'signup') setMode('signup')
   }, [searchParams])
 
+  // If redirected here due to beta restriction, show message once.
+  useEffect(() => {
+    const blocked = searchParams.get('blocked')
+    if (blocked === 'beta') {
+      addToast({ type: 'error', message: PRIVATE_BETA_BLOCK_MESSAGE })
+    }
+  }, [searchParams, addToast])
+
   // Redirect if already authenticated
   useEffect(() => {
     if (isAuthenticated) {
@@ -45,26 +54,6 @@ export default function LoginPage() {
       }
     }
   }, [isAuthenticated, router, searchParams])
-
-  // Demo mode handler
-  const handleDemoMode = async () => {
-    setIsSubmitting(true)
-    try {
-      const { user, error } = await signInDemo('demo@spendplan.cl', 'Usuario Demo')
-      if (error) {
-        addToast({ type: 'error', message: 'Error al iniciar modo demo' })
-      } else if (user) {
-        addToast({ 
-          type: 'success', 
-          title: '¡Modo Demo activado!',
-          message: 'Explora la app sin necesidad de registro' 
-        })
-        router.push('/onboarding')
-      }
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -276,32 +265,6 @@ export default function LoginPage() {
                   )}
                 </Button>
 
-                {/* Demo mode button */}
-                {mode !== 'forgot' && (
-                  <div className="relative w-full">
-                    <div className="absolute inset-0 flex items-center">
-                      <span className="w-full border-t" />
-                    </div>
-                    <div className="relative flex justify-center text-xs uppercase">
-                      <span className="bg-card px-2 text-muted-foreground">o</span>
-                    </div>
-                  </div>
-                )}
-
-                {mode !== 'forgot' && (
-                  <Button 
-                    type="button"
-                    variant="outline"
-                    className="w-full" 
-                    disabled={isSubmitting}
-                    size="lg"
-                    onClick={handleDemoMode}
-                  >
-                    <Sparkles className="mr-2 h-4 w-4" />
-                    Probar sin registro
-                  </Button>
-                )}
-                
                 {mode === 'login' && (
                   <p className="text-sm text-muted-foreground text-center">
                     ¿No tienes cuenta?{' '}

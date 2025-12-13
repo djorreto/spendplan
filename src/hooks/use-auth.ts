@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { User, AuthError } from '@supabase/supabase-js'
 import { supabaseBrowser } from '@/lib/supabase'
+import { normalizeEmail, PRIVATE_BETA_BLOCK_MESSAGE } from '@/lib/beta-allowlist'
 import type { Profile } from '@/types'
 
 interface AuthState {
@@ -19,9 +20,39 @@ let profileCache: { [userId: string]: Profile } = {}
 // Dedupe global para evitar check simultáneo entre múltiples instancias
 let authInFlight: Promise<void> | null = null
 
-// Demo mode helpers
-const DEMO_USER_KEY = 'spendplan_demo_user'
-const DEMO_PROFILE_KEY = 'spendplan_demo_profile'
+type BetaCheckResult = { betaMode: boolean; allowed: boolean }
+const allowlistCache = new Map<string, { value: BetaCheckResult; ts: number }>()
+const ALLOWLIST_CACHE_TTL_MS = 60_000
+
+async function checkBetaAllowlist(email: string): Promise<BetaCheckResult> {
+  const e = normalizeEmail(email)
+  if (!e) return { betaMode: true, allowed: false }
+
+  const cached = allowlistCache.get(e)
+  const now = Date.now()
+  if (cached && now - cached.ts < ALLOWLIST_CACHE_TTL_MS) return cached.value
+
+  try {
+    const res = await fetch('/api/beta/check-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: e }),
+    })
+    if (!res.ok) throw new Error(`beta check failed: ${res.status}`)
+    const json = (await res.json()) as Partial<BetaCheckResult>
+    const value: BetaCheckResult = {
+      betaMode: !!json.betaMode,
+      allowed: !!json.allowed,
+    }
+    allowlistCache.set(e, { value, ts: now })
+    return value
+  } catch (err) {
+    // Fail closed for private beta.
+    const value: BetaCheckResult = { betaMode: true, allowed: false }
+    allowlistCache.set(e, { value, ts: now })
+    return value
+  }
+}
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
   let t: ReturnType<typeof setTimeout> | undefined
@@ -33,29 +64,6 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): 
   ]).finally(() => {
     if (t) clearTimeout(t)
   })
-}
-
-function getDemoUser(): User | null {
-  if (typeof window === 'undefined') return null
-  const saved = localStorage.getItem(DEMO_USER_KEY)
-  return saved ? JSON.parse(saved) : null
-}
-
-function getDemoProfile(): Profile | null {
-  if (typeof window === 'undefined') return null
-  const saved = localStorage.getItem(DEMO_PROFILE_KEY)
-  return saved ? JSON.parse(saved) : null
-}
-
-function saveDemoUser(user: User, profile: Profile) {
-  localStorage.setItem(DEMO_USER_KEY, JSON.stringify(user))
-  localStorage.setItem(DEMO_PROFILE_KEY, JSON.stringify(profile))
-}
-
-function clearDemoUser() {
-  localStorage.removeItem(DEMO_USER_KEY)
-  localStorage.removeItem(DEMO_PROFILE_KEY)
-  localStorage.removeItem('spendplan_demo_household')
 }
 
 /**
@@ -100,9 +108,16 @@ export function useAuth() {
           console.log('📋 Profile not found, creating...')
           const { data: userData } = await supabase.auth.getUser()
           if (userData?.user) {
+            const email = normalizeEmail(userData.user.email || '')
+            const beta = await checkBetaAllowlist(email)
+            if (beta.betaMode && !beta.allowed) {
+              // No crear perfil en beta privada si no está invitado
+              await supabase.auth.signOut().catch(() => {})
+              return null
+            }
             const newProfile = {
               id: userId,
-              email: userData.user.email,
+              email,
               full_name: userData.user.user_metadata?.full_name || userData.user.email?.split('@')[0] || 'Usuario',
               onboarding_completed: false,
             }
@@ -145,10 +160,6 @@ export function useAuth() {
       
       const run = (async () => {
         try {
-        // Primero verificar si hay usuario demo
-        const demoUser = getDemoUser()
-        const demoProfile = getDemoProfile()
-        
         // Preferir session local (más rápido) y luego validar user
         const { data: { session } } = await supabase.auth.getSession()
         const sessionUser = session?.user || null
@@ -159,6 +170,15 @@ export function useAuth() {
         if (!isMounted) return
         
         if (user) {
+          const beta = await checkBetaAllowlist(user.email || '')
+          if (beta.betaMode && !beta.allowed) {
+            await supabase.auth.signOut().catch(() => {})
+            if (isMounted) setState({ user: null, profile: null, loading: false, error: null, isDemoMode: false })
+            if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+              window.location.href = `/login?blocked=beta`
+            }
+            return
+          }
           // No bloquear el render esperando profile: evita “freeze” en refresh si la query se cuelga
           if (isMounted) {
             setState({ user, profile: null, loading: false, error: null, isDemoMode: false })
@@ -166,11 +186,6 @@ export function useAuth() {
           void loadProfile(user.id).then((p) => {
             if (isMounted && p) setState((prev) => ({ ...prev, profile: p }))
           })
-        } else if (demoUser && demoProfile) {
-          // Usar usuario demo si existe
-          if (isMounted) {
-            setState({ user: demoUser, profile: demoProfile, loading: false, error: null, isDemoMode: true })
-          }
         } else {
           if (isMounted) {
             setState({ user: null, profile: null, loading: false, error: null, isDemoMode: false })
@@ -179,15 +194,8 @@ export function useAuth() {
         } catch (error) {
         console.error('Auth check error:', error)
         if (isMounted) {
-          // Verificar si hay usuario demo como fallback
-          const demoUser = getDemoUser()
-          const demoProfile = getDemoProfile()
-          if (demoUser && demoProfile) {
-            setState({ user: demoUser, profile: demoProfile, loading: false, error: null, isDemoMode: true })
-          } else {
           // En caso de error o timeout, mostrar la página de login
             setState({ user: null, profile: null, loading: false, error: null, isDemoMode: false })
-          }
         }
         }
       })()
@@ -208,6 +216,15 @@ export function useAuth() {
         if (!isMounted) return
         
         if (session?.user) {
+          const beta = await checkBetaAllowlist(session.user.email || '')
+          if (beta.betaMode && !beta.allowed) {
+            await supabase.auth.signOut().catch(() => {})
+            if (isMounted) setState(prev => ({ ...prev, user: null, profile: null, loading: false, isDemoMode: false }))
+            if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+              window.location.href = `/login?blocked=beta`
+            }
+            return
+          }
           if (isMounted) {
             setState(prev => ({ ...prev, user: session.user, profile: prev.profile, loading: false, isDemoMode: false }))
           }
@@ -215,17 +232,8 @@ export function useAuth() {
             if (isMounted && p) setState((prev) => ({ ...prev, profile: p }))
           })
         } else {
-          // No limpiar si hay demo mode activo
-          const demoUser = getDemoUser()
-          const demoProfile = getDemoProfile()
-          if (demoUser && demoProfile) {
-            if (isMounted) {
-              setState(prev => ({ ...prev, user: demoUser, profile: demoProfile, loading: false, isDemoMode: true }))
-          }
-        } else {
           if (isMounted) {
-              setState(prev => ({ ...prev, user: null, profile: null, loading: false, isDemoMode: false }))
-            }
+            setState(prev => ({ ...prev, user: null, profile: null, loading: false, isDemoMode: false }))
           }
         }
       }
@@ -243,7 +251,7 @@ export function useAuth() {
     
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
-        email,
+        email: normalizeEmail(email),
         password
       })
 
@@ -252,6 +260,12 @@ export function useAuth() {
       if (error) {
         console.error('🔐 SignIn error:', error)
         return { user: null, error }
+      }
+
+      const beta = await checkBetaAllowlist(data.user?.email || '')
+      if (beta.betaMode && !beta.allowed) {
+        await supabase.auth.signOut().catch(() => {})
+        return { user: null, error: { message: PRIVATE_BETA_BLOCK_MESSAGE } as AuthError }
       }
 
       // Actualizar estado con el usuario (sin esperar profile)
@@ -265,35 +279,6 @@ export function useAuth() {
     }
   }, [supabase.auth])
 
-  // Sign in demo mode (sin Supabase)
-  const signInDemo = useCallback(async (email: string, name?: string) => {
-    console.log('🎭 Demo SignIn iniciado...')
-    
-    const demoUser: User = {
-      id: `demo-${Date.now()}`,
-      email,
-      app_metadata: {},
-      user_metadata: { full_name: name || email.split('@')[0] },
-      aud: 'demo',
-      created_at: new Date().toISOString(),
-    } as User
-
-    const demoProfile: Profile = {
-      id: demoUser.id,
-      email,
-      full_name: name || email.split('@')[0],
-      onboarding_completed: false,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }
-
-    saveDemoUser(demoUser, demoProfile)
-    setState({ user: demoUser, profile: demoProfile, loading: false, error: null, isDemoMode: true })
-    
-    console.log('🎭 Demo SignIn exitoso')
-    return { user: demoUser, error: null }
-  }, [])
-
   // Sign up
   const signUp = useCallback(async (
     email: string, 
@@ -304,8 +289,14 @@ export function useAuth() {
     setState(prev => ({ ...prev, error: null }))
     
     try {
+    const normalized = normalizeEmail(email)
+    const beta = await checkBetaAllowlist(normalized)
+    if (beta.betaMode && !beta.allowed) {
+      return { user: null, error: { message: PRIVATE_BETA_BLOCK_MESSAGE } as AuthError }
+    }
+
     const { data, error } = await supabase.auth.signUp({
-      email,
+      email: normalized,
       password,
       options: {
         data: metadata
@@ -313,26 +304,20 @@ export function useAuth() {
     })
 
     if (error) {
-        // Si Supabase falla, usar modo demo
-        console.warn('Supabase signup failed, using demo mode:', error)
-        return signInDemo(email, metadata?.full_name)
+        return { user: null, error }
     }
 
     return { user: data.user, error: null }
     } catch (e) {
-      console.warn('Supabase error, using demo mode:', e)
-      return signInDemo(email, metadata?.full_name)
+      return { user: null, error: { message: 'Error inesperado al crear cuenta' } as AuthError }
     }
-  }, [supabase.auth, signInDemo])
+  }, [supabase.auth])
 
   // Sign out
   const signOut = useCallback(async () => {
-    // Limpiar datos demo
-    clearDemoUser()
-    
     const { error } = await supabase.auth.signOut()
 
-    if (error && !state.isDemoMode) {
+    if (error) {
       setState(prev => ({ ...prev, error }))
       return { error }
     }
@@ -344,16 +329,6 @@ export function useAuth() {
   // Update profile
   const updateProfile = useCallback(async (updates: Partial<Profile>) => {
     if (!state.user) return { error: 'No autenticado' }
-
-    // Si estamos en modo demo o hay un usuario demo, actualizar localStorage
-    const demoUser = getDemoUser()
-    if (state.isDemoMode || demoUser) {
-      const currentProfile = state.profile || getDemoProfile()
-      const newProfile = { ...currentProfile, ...updates } as Profile
-      localStorage.setItem(DEMO_PROFILE_KEY, JSON.stringify(newProfile))
-      setState(prev => ({ ...prev, profile: newProfile, isDemoMode: true }))
-      return { error: null }
-    }
 
     try {
     const { error } = await supabase
@@ -370,13 +345,7 @@ export function useAuth() {
     setState(prev => ({ ...prev, profile }))
     return { error: null }
     } catch (e) {
-      console.warn('Supabase update failed, using demo mode')
-      // Fallback a demo mode
-      const currentProfile = state.profile || getDemoProfile()
-      const newProfile = { ...currentProfile, ...updates } as Profile
-      localStorage.setItem(DEMO_PROFILE_KEY, JSON.stringify(newProfile))
-      setState(prev => ({ ...prev, profile: newProfile, isDemoMode: true }))
-      return { error: null }
+      return { error: 'Error inesperado al actualizar perfil' }
     }
   }, [supabase, state.user, state.isDemoMode, state.profile, loadProfile])
 
@@ -410,7 +379,6 @@ export function useAuth() {
     needsOnboarding: state.profile && !state.profile.onboarding_completed,
     isDemoMode: state.isDemoMode,
     signIn,
-    signInDemo,
     signUp,
     signOut,
     updateProfile,
