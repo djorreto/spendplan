@@ -120,6 +120,9 @@ export function CopilotChat({ context, isOpen, onClose }: CopilotChatProps) {
               <X className="h-4 w-4" />
             </Button>
           </div>
+          <p className="text-xs text-muted-foreground mt-2">
+            Solo responde sobre tu presupuesto, gastos y finanzas en SpendPlan.
+          </p>
         </CardHeader>
 
         {/* Messages */}
@@ -225,9 +228,14 @@ export function CopilotButton({ onClick }: { onClick: () => void }) {
     <Button
       onClick={onClick}
       size="lg"
-      className="fixed bottom-4 right-4 h-14 w-14 rounded-full shadow-lg z-40"
+      title="Copiloto de SpendPlan"
+      aria-label="Abrir Copiloto de SpendPlan"
+      className="fixed bottom-4 right-4 h-14 w-14 rounded-full shadow-lg z-40 text-white bg-gradient-to-br from-emerald-500 via-emerald-600 to-teal-600 hover:from-emerald-400 hover:via-emerald-600 hover:to-teal-500"
     >
-      <MessageCircle className="h-6 w-6" />
+      <span className="absolute inset-0 rounded-full animate-ping bg-emerald-400/30" />
+      <span className="relative">
+        <Sparkles className="h-6 w-6" />
+      </span>
     </Button>
   )
 }
