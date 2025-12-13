@@ -166,11 +166,24 @@ export function useHousehold() {
     if (!force && householdsInFlight) {
       return householdsInFlight
     }
+
+    // Si ya tenemos data y es reciente, no volver a cargar (evita loops por remount)
+    const hasLoadedData =
+      !!globalHouseholdState.currentHousehold && (globalHouseholdState.households?.length || 0) > 0 && !globalHouseholdState.error
+    const cacheFresh = householdCache ? now - householdCache.timestamp < CACHE_TTL : false
+    if (!force && hasLoadedData && cacheFresh) {
+      return
+    }
+
     lastHouseholdLoadRef.current = now
     console.log('🏠 Loading households...')
 
-    // Marcar loading solo cuando realmente vamos a cargar
-    setState(prev => ({ ...prev, loading: true }))
+    // Solo bloquear UI (loading=true) si no hay data previa o si es force.
+    // Si ya tenemos data, hacemos refresh en background para no desmontar el layout.
+    const shouldBlockUi = force || !globalHouseholdState.currentHousehold
+    if (shouldBlockUi) {
+      setState(prev => ({ ...prev, loading: true }))
+    }
 
     const op = startOp('household.loadHouseholds', { force })
     const run = (async () => {
@@ -270,6 +283,9 @@ export function useHousehold() {
         error: null,
         isDemoMode: false,
       }))
+
+      // Actualizar cache: evita refetch inmediato por remounts
+      householdCache = { households, timestamp: Date.now() }
       
       console.log('🏠 Households loaded successfully')
 
@@ -327,9 +343,12 @@ export function useHousehold() {
 
   // Cargar hogares al montar / cuando cambie sesión
   useEffect(() => {
-    loadHouseholds()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    const hasData =
+      !!globalHouseholdState.currentHousehold && (globalHouseholdState.households?.length || 0) > 0 && !globalHouseholdState.error
+    if (!hasData) {
+      void loadHouseholds()
+    }
+  }, [loadHouseholds])
 
   // Cambiar hogar actual
   const setCurrentHousehold = useCallback((household: Household) => {
