@@ -62,7 +62,7 @@ export function AppTopbar() {
             if (h) setCurrentHousehold(h)
           }}
         >
-          <SelectTrigger className="w-[180px]">
+          <SelectTrigger className="w-[140px] sm:w-[180px]">
             <Home className="h-4 w-4 mr-2" />
             <SelectValue placeholder="Seleccionar hogar" />
           </SelectTrigger>
@@ -83,7 +83,7 @@ export function AppTopbar() {
 
       {/* Month Selector */}
       <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-        <SelectTrigger className="w-[160px]">
+        <SelectTrigger className="w-[120px] sm:w-[160px]">
           <Calendar className="h-4 w-4 mr-2" />
           <SelectValue />
         </SelectTrigger>
@@ -99,7 +99,7 @@ export function AppTopbar() {
       {/* Actions */}
       <div className="flex items-center gap-2">
         {/* Notifications */}
-        <Button variant="ghost" size="icon" className="relative">
+        <Button variant="ghost" size="icon" className="relative hidden sm:inline-flex">
           <Bell className="h-5 w-5" />
           <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-destructive text-[10px] font-medium text-destructive-foreground flex items-center justify-center">
             2

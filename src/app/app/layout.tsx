@@ -158,7 +158,7 @@ export default function AppLayout({
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-muted/30">
+    <div className="flex min-h-screen h-[100dvh] overflow-hidden bg-muted/30">
       {/* Sidebar */}
       <AppSidebar />
 

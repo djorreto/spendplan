@@ -30,7 +30,11 @@ interface MenuItem {
 }
 
 export function AppSidebar() {
-  const [isCollapsed, setIsCollapsed] = useState(false)
+  // En móvil partimos colapsado para evitar layouts apretados
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    if (typeof window === 'undefined') return false
+    return window.innerWidth < 768
+  })
   const pathname = usePathname()
   const { signOut } = useAuth()
 
