@@ -458,10 +458,13 @@ export default function ExpensesPage() {
   // Calculate total
   const totalFiltered = filteredExpenses.reduce((sum, e) => sum + e.amount, 0)
 
-  // Generate months
+  // Generate months - start from current month and go back 6 months
   const months = Array.from({ length: 6 }, (_, i) => {
-    const date = new Date()
-    date.setMonth(date.getMonth() - i)
+    // Use local time to get correct month
+    const now = new Date()
+    const year = now.getFullYear()
+    const month = now.getMonth() - i
+    const date = new Date(year, month, 1)
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
   })
 
