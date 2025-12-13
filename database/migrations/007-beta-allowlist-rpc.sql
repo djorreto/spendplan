@@ -17,6 +17,20 @@ as $$
   );
 $$;
 
+-- Asegurar que el dueño del function pueda leer la tabla (evita "permission denied")
+do $$
+declare fn_owner text;
+begin
+  select pg_get_userbyid(p.proowner) into fn_owner
+  from pg_proc p
+  join pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'public' and p.proname = 'beta_is_allowed';
+
+  if fn_owner is not null then
+    execute format('grant select on table public.beta_allowlist to %I', fn_owner);
+  end if;
+end $$;
+
 revoke all on function public.beta_is_allowed(text) from public;
 grant execute on function public.beta_is_allowed(text) to anon, authenticated;
 
