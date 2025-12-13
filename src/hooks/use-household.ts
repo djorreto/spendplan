@@ -367,11 +367,8 @@ export function useHousehold() {
       
       console.log('🏠 Update result:', data)
 
-      // Reload with timeout to avoid hanging
-      await Promise.race([
-        loadHouseholds(),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 15000))
-      ]).catch(e => console.warn('🏠 loadHouseholds timeout or error:', e))
+      // Reload households
+      await loadHouseholds().catch(e => console.warn('🏠 loadHouseholds error:', e))
       
       return { error: null }
     } catch (error) {
@@ -466,27 +463,13 @@ export function useHousehold() {
   useEffect(() => {
     let isMounted = true
     
-    const loadWithTimeout = async () => {
-      try {
-        // Timeout de 15 segundos
-        const timeoutId = setTimeout(() => {
-          if (isMounted) {
-            console.warn('Household loading timeout')
-            setState(prev => ({ ...prev, loading: false }))
-          }
-        }, 15000)
-        
-        await loadHouseholds()
-        clearTimeout(timeoutId)
-      } catch (error) {
-        console.error('Error in household loading:', error)
-        if (isMounted) {
-          setState(prev => ({ ...prev, loading: false, error: 'Error al cargar hogares' }))
-        }
+    // Cargar sin timeout - dejamos que Supabase responda
+    loadHouseholds().catch(error => {
+      console.error('Error in household loading:', error)
+      if (isMounted) {
+        setState(prev => ({ ...prev, loading: false, error: 'Error al cargar hogares' }))
       }
-    }
-    
-    loadWithTimeout()
+    })
     
     return () => {
       isMounted = false

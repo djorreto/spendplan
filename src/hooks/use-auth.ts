@@ -133,14 +133,8 @@ export function useAuth() {
         const demoUser = getDemoUser()
         const demoProfile = getDemoProfile()
         
-        // Timeout de 15 segundos para evitar que se quede colgado
-        const timeoutPromise = new Promise<never>((_, reject) => 
-          setTimeout(() => reject(new Error('Auth timeout')), 15000)
-        )
-        
-        const authPromise = supabase.auth.getUser()
-        
-        const { data: { user } } = await Promise.race([authPromise, timeoutPromise]) as Awaited<typeof authPromise>
+        // Sin timeout - dejamos que Supabase responda
+        const { data: { user } } = await supabase.auth.getUser()
         
         if (!isMounted) return
         
