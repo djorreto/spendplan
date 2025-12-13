@@ -2,14 +2,17 @@
 
 export const dynamic = 'force-dynamic'
 
-import { useState, useEffect } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import Link from 'next/link'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { useHousehold } from '@/hooks/use-household'
+import { useSelectedMonth } from '@/hooks/use-selected-month'
+import { useAuth } from '@/hooks/use-auth'
 import { useToast } from '@/components/ui/toast'
-import { formatCurrency, formatDate, getCurrentMonth, getMonthDateRange } from '@/lib/utils'
+import { formatCurrency, formatDate, formatMonth, getInitials, getMonthDateRange } from '@/lib/utils'
 import { supabaseBrowser } from '@/lib/supabase'
 import { endOp, formatSupabaseError, logOp, startOp, withRetry } from '@/lib/debug-log'
 import { 
@@ -65,6 +68,9 @@ interface Expense {
   expense_date: string
   category_id: string | null
   is_unbudgeted?: boolean
+  created_by?: string | null
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  created_by_profile?: any
 }
 
 interface Category {
@@ -80,6 +86,13 @@ interface DashboardData {
   totalVariableSpent: number
   totalUnbudgeted: number
   availableReal: number
+  spendByUser: Array<{
+    id: string
+    name: string
+    amount: number
+    count: number
+    avatar_url?: string | null
+  }>
   recentExpenses: Array<{
     id: string
     amount: number
@@ -87,6 +100,8 @@ interface DashboardData {
     merchant: string
     expense_date: string
     category_name: string
+    created_by_name?: string
+    created_by_avatar_url?: string | null
   }>
   daysInMonth: number
   daysPassed: number
@@ -94,16 +109,18 @@ interface DashboardData {
 
 export default function DashboardPage() {
   const { currentHousehold, isDemoMode } = useHousehold()
+  const { user, profile } = useAuth()
+  const { selectedMonth } = useSelectedMonth(currentHousehold?.id)
   const { addToast } = useToast()
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
-  const currentMonth = getCurrentMonth()
+  const [includeFixedInPeople, setIncludeFixedInPeople] = useState(false)
 
   useEffect(() => {
     if (currentHousehold) {
       loadDashboardData()
     }
-  }, [currentHousehold])
+  }, [currentHousehold?.id, currentHousehold?.currency, isDemoMode, selectedMonth])
 
   const loadDashboardData = async () => {
     if (!currentHousehold) return
@@ -112,14 +129,14 @@ export default function DashboardPage() {
     // Solo es demo si explícitamente está en modo demo Y el household es de demo
     const isDemo = isDemoMode && currentHousehold.id.startsWith('demo-')
     
-    const op = startOp('dashboard.loadData', { householdId: currentHousehold.id, month: currentMonth, isDemo })
+    const op = startOp('dashboard.loadData', { householdId: currentHousehold.id, month: selectedMonth, isDemo })
 
     // Calculate days in month and days passed
+    const [yy, mm] = selectedMonth.split('-').map(Number)
+    const daysInMonth = new Date(yy, mm, 0).getDate()
     const now = new Date()
-    const year = now.getFullYear()
-    const month = now.getMonth()
-    const daysInMonth = new Date(year, month + 1, 0).getDate()
-    const daysPassed = now.getDate()
+    const sameMonth = now.getFullYear() === yy && now.getMonth() + 1 === mm
+    const daysPassed = sameMonth ? Math.min(now.getDate(), daysInMonth) : daysInMonth
     
     if (isDemo) {
       const budgetData = JSON.parse(localStorage.getItem(DEMO_BUDGET_KEY) || '{"items":[]}')
@@ -128,7 +145,7 @@ export default function DashboardPage() {
       const customCategories: Category[] = JSON.parse(localStorage.getItem(DEMO_CATEGORIES_KEY) || '[]')
       const categories = [...DEMO_CATEGORIES, ...customCategories]
       
-      const monthExpenses = allExpenses.filter(e => e.expense_date?.startsWith(currentMonth))
+      const monthExpenses = allExpenses.filter(e => e.expense_date?.startsWith(selectedMonth))
       
       const isItemActive = (item: BudgetItem) => {
         if (item.is_active === false) return false
@@ -158,6 +175,21 @@ export default function DashboardPage() {
       
       const availableReal = totalIncome - totalFixed - totalVariableSpent - totalUnbudgeted
       
+      // Spend by user (created_by)
+      const spendMap = new Map<string, { id: string; name: string; amount: number; count: number; avatar_url?: string | null }>()
+      monthExpenses.forEach((e: any) => {
+        const uid = e.created_by || 'unassigned'
+        const name =
+          uid === (user?.id || '')
+            ? (profile?.full_name || 'Tú')
+            : uid === 'unassigned'
+              ? 'Sin asignar'
+              : `Usuario ${String(uid).slice(-4)}`
+        const existing = spendMap.get(uid) || { id: uid, name, amount: 0, count: 0, avatar_url: null }
+        spendMap.set(uid, { ...existing, amount: existing.amount + (e.amount || 0), count: existing.count + 1 })
+      })
+      const spendByUser = Array.from(spendMap.values()).sort((a, b) => b.amount - a.amount)
+
       const recentExpenses = monthExpenses
         .sort((a, b) => b.expense_date.localeCompare(a.expense_date))
         .slice(0, 5)
@@ -169,7 +201,9 @@ export default function DashboardPage() {
             description: e.description,
             merchant: e.merchant,
             expense_date: e.expense_date,
-            category_name: cat?.name || (e.is_unbudgeted ? 'No presupuestado' : 'Sin categoría')
+            category_name: cat?.name || (e.is_unbudgeted ? 'No presupuestado' : 'Sin categoría'),
+            created_by_name: (e as any).created_by ? ((e as any).created_by === user?.id ? (profile?.full_name || 'Tú') : undefined) : undefined,
+            created_by_avatar_url: profile?.avatar_url || null,
           }
         })
       
@@ -180,6 +214,7 @@ export default function DashboardPage() {
         totalVariableSpent,
         totalUnbudgeted,
         availableReal,
+        spendByUser,
         recentExpenses,
         daysInMonth,
         daysPassed
@@ -196,19 +231,20 @@ export default function DashboardPage() {
       // Load from Supabase for real users (budget + expenses)
       try {
         const supabase = supabaseBrowser()
-        const range = getMonthDateRange(currentMonth)
+        const range = getMonthDateRange(selectedMonth)
 
         const [expensesResp, budgetResp] = await Promise.all([
           withRetry(
             () =>
               supabase
                 .from('expenses')
-                .select('id, amount, description, merchant, expense_date, category_id, is_unbudgeted, category:categories!expenses_category_id_fkey(name)')
+                .select('id, amount, description, merchant, expense_date, category_id, is_unbudgeted, created_by, status, category:categories!expenses_category_id_fkey(name), created_by_profile:profiles!expenses_created_by_fkey(full_name, email, avatar_url)')
                 .eq('household_id', currentHousehold.id)
                 .gte('expense_date', range.start)
                 .lt('expense_date', range.endExclusive)
+                .eq('status', 'confirmed')
                 .order('expense_date', { ascending: false })
-                .limit(200),
+                .limit(500),
             { retries: 2, baseDelayMs: 250, ctx: op, step: 'select.expenses' }
           ),
           withRetry(
@@ -257,13 +293,28 @@ export default function DashboardPage() {
 
         const availableReal = totalIncome - totalFixed - totalVariableSpent - totalUnbudgeted
 
-        const recentExpenses = monthExpenses.slice(0, 5).map((e) => ({
+        // Spend by user (created_by)
+        const spendMap = new Map<string, { id: string; name: string; amount: number; count: number; avatar_url?: string | null }>()
+        monthExpenses.forEach((e: any) => {
+          const uid = e.created_by || 'unassigned'
+          const name =
+            uid === 'unassigned'
+              ? 'Sin asignar'
+              : (e.created_by_profile?.full_name || e.created_by_profile?.email || 'Usuario')
+          const existing = spendMap.get(uid) || { id: uid, name, amount: 0, count: 0, avatar_url: e.created_by_profile?.avatar_url || null }
+          spendMap.set(uid, { ...existing, amount: existing.amount + (Number(e.amount) || 0), count: existing.count + 1 })
+        })
+        const spendByUser = Array.from(spendMap.values()).sort((a, b) => b.amount - a.amount)
+
+        const recentExpenses = monthExpenses.slice(0, 5).map((e: any) => ({
           id: e.id,
           amount: e.amount,
           description: e.description || '',
           merchant: e.merchant || '',
           expense_date: e.expense_date,
           category_name: e.category?.name || (e.is_unbudgeted ? 'No presupuestado' : 'Sin categoría'),
+          created_by_name: e.created_by_profile?.full_name || e.created_by_profile?.email || undefined,
+          created_by_avatar_url: e.created_by_profile?.avatar_url || null,
         }))
 
         setData({
@@ -273,6 +324,7 @@ export default function DashboardPage() {
           totalVariableSpent,
           totalUnbudgeted,
           availableReal,
+          spendByUser,
           recentExpenses,
           daysInMonth,
           daysPassed,
@@ -300,6 +352,7 @@ export default function DashboardPage() {
             totalVariableSpent: 0,
             totalUnbudgeted: 0,
             availableReal: 0,
+            spendByUser: [],
             recentExpenses: [],
             daysInMonth,
             daysPassed,
@@ -435,6 +488,22 @@ export default function DashboardPage() {
   const status = getStatus()
   const StatusIcon = status.icon
 
+  const spendRows = useMemo(() => {
+    const base = data?.spendByUser || []
+    if (!includeFixedInPeople) return base
+    const fixed = data?.totalFixed || 0
+    if (fixed <= 0) return base
+    return [
+      ...base,
+      { id: 'household-fixed', name: 'Hogar (fijos)', amount: fixed, count: 0, avatar_url: null },
+    ].sort((a, b) => b.amount - a.amount)
+  }, [data?.spendByUser, data?.totalFixed, includeFixedInPeople])
+
+  const maxSpend = useMemo(() => {
+    const vals = spendRows.map((r) => r.amount)
+    return vals.length ? Math.max(...vals) : 0
+  }, [spendRows])
+
   return (
     <div className="space-y-6 max-w-2xl mx-auto">
       {/* Header */}
@@ -442,7 +511,7 @@ export default function DashboardPage() {
         <div>
           <h1 className="text-2xl font-bold">¿Cómo va el mes?</h1>
           <p className="text-muted-foreground text-sm">
-            {new Date().toLocaleDateString('es-CL', { month: 'long', year: 'numeric' })} · Día {data?.daysPassed} de {data?.daysInMonth}
+            {formatMonth(selectedMonth)} · Día {data?.daysPassed} de {data?.daysInMonth}
           </p>
         </div>
         <Link href="/app/expenses/new">
@@ -497,6 +566,58 @@ export default function DashboardPage() {
         </CardContent>
       </Card>
 
+      {/* Spend by person */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <CardTitle className="text-lg">Gasto por persona</CardTitle>
+              <CardDescription>Según quién registró el gasto (created_by)</CardDescription>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIncludeFixedInPeople((v) => !v)}
+              className="whitespace-nowrap"
+            >
+              {includeFixedInPeople ? 'Ocultar fijos' : 'Incluir fijos'}
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {spendRows.length === 0 ? (
+            <div className="text-sm text-muted-foreground">Aún no hay gastos registrados este mes.</div>
+          ) : (
+            <div className="space-y-4">
+              {spendRows.map((row) => (
+                <div key={row.id} className="space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <Avatar className="h-8 w-8">
+                        <AvatarImage src={row.avatar_url || undefined} />
+                        <AvatarFallback className={row.id === 'household-fixed' ? 'bg-muted text-foreground' : 'bg-primary text-primary-foreground'}>
+                          {row.id === 'household-fixed' ? 'H' : getInitials(row.name || 'U')}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">{row.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {row.id === 'household-fixed' ? 'Plan fijo del hogar' : `${row.count} gasto(s)`}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-sm font-semibold tabular-nums">
+                      {formatCurrency(row.amount, currentHousehold?.currency)}
+                    </div>
+                  </div>
+                  <Progress value={maxSpend > 0 ? Math.round((row.amount / maxSpend) * 100) : 0} className="h-2" />
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Quick Link to Budget */}
       <Link href="/app/budget">
         <Card className="hover:bg-muted/50 transition-colors cursor-pointer">
@@ -536,6 +657,7 @@ export default function DashboardPage() {
                       <p className="font-medium text-sm">{expense.merchant || expense.description || 'Gasto'}</p>
                       <p className="text-xs text-muted-foreground">
                         {expense.category_name} · {formatDate(expense.expense_date)}
+                        {expense.created_by_name ? ` · ${expense.created_by_name}` : ''}
                       </p>
                     </div>
                   </div>
