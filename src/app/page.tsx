@@ -248,14 +248,11 @@ export default function HomePage() {
       <section id="pricing" className="py-20 px-4 sm:px-6 lg:px-8 bg-muted/30">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
-            <Badge variant="secondary" className="mb-4">
-              🎉 Oferta de Lanzamiento
-            </Badge>
             <h2 className="text-3xl md:text-4xl font-bold mb-4">
               Precios simples y transparentes
             </h2>
             <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-              Comienza gratis y paga solo cuando veas el valor
+              Por ahora es <span className="font-semibold">gratis</span> (marcha blanca) y está en <span className="font-semibold">beta</span>
             </p>
           </div>
 
@@ -269,19 +266,19 @@ export default function HomePage() {
               </div>
               <CardContent className="p-8 pt-10">
                 <div className="text-center mb-6">
-                  <h3 className="text-2xl font-bold mb-2">SpendPlan Pro</h3>
+                  <h3 className="text-2xl font-bold mb-2">SpendPlan (Beta)</h3>
                   <p className="text-muted-foreground">Todo lo que necesitas para controlar tus finanzas</p>
                 </div>
                 
                 <div className="text-center mb-6">
-                  <div className="flex items-baseline justify-center gap-2">
-                    <span className="text-5xl font-bold">$1.990</span>
-                    <span className="text-muted-foreground">/mes</span>
-                  </div>
-                  <div className="mt-2 inline-flex items-center gap-2 bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm font-medium">
+                  <div className="inline-flex items-center gap-2 bg-green-100 text-green-700 px-3 py-2 rounded-full text-sm font-semibold">
                     <Sparkles className="h-4 w-4" />
-                    3 meses GRATIS
+                    Gratis en marcha blanca
                   </div>
+                  <p className="text-xs text-muted-foreground mt-3 leading-relaxed">
+                    SpendPlan está en modo beta. No nos hacemos responsables por pérdidas, errores o daño derivado del uso del producto.
+                    Te recomendamos mantener respaldos de tu información.
+                  </p>
                 </div>
 
                 <ul className="space-y-3 mb-8">
@@ -298,12 +295,12 @@ export default function HomePage() {
 
                 <Link href="/login?mode=signup">
                   <Button className="w-full" size="lg">
-                    Comenzar 3 Meses Gratis
+                    Comenzar Gratis
                     <ArrowRight className="ml-2 h-4 w-4" />
                   </Button>
                 </Link>
                 <p className="text-xs text-center text-muted-foreground mt-3">
-                  Sin tarjeta de crédito para los 3 meses gratis
+                  Dudas o soporte: <a className="underline hover:text-foreground" href="mailto:djorreto@spendplan.cl">djorreto@spendplan.cl</a>
                 </p>
               </CardContent>
             </Card>
@@ -316,15 +313,15 @@ export default function HomePage() {
                     <Users className="h-8 w-8 text-secondary" />
                   </div>
                   <h3 className="text-2xl font-bold mb-2">Asesorías Financieras</h3>
-                  <p className="text-muted-foreground">Acompañamiento personalizado para mejorar tus finanzas</p>
+                  <p className="text-muted-foreground">Acompañamiento personalizado para mejorar tus finanzas (proyectado)</p>
                 </div>
 
                 <div className="bg-accent/50 rounded-xl p-4 mb-6 text-center">
                   <p className="text-sm font-medium text-accent-foreground">
-                    🎁 Primera asesoría <span className="font-bold">GRATIS</span>
+                    🧩 Próximamente
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Exclusivo para usuarios inscritos
+                    Estamos preparando asesorías 1:1 y planes de acción.
                   </p>
                 </div>
 
@@ -336,25 +333,9 @@ export default function HomePage() {
                   <PricingFeature included>Seguimiento de metas</PricingFeature>
                 </ul>
 
-                <div className="border-t pt-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <span className="text-muted-foreground">Sesión adicional (45 min)</span>
-                    <span className="font-bold">$15.000</span>
-                  </div>
-                  <div className="flex items-center justify-between mb-4">
-                    <span className="text-muted-foreground">Pack 4 sesiones</span>
-                    <div className="text-right">
-                      <span className="font-bold">$49.990</span>
-                      <span className="text-xs text-green-600 ml-2">Ahorra 17%</span>
-                    </div>
-                  </div>
-                </div>
-
-                <Link href="/login?mode=signup">
-                  <Button variant="outline" className="w-full" size="lg">
-                    Agendar Asesoría Gratis
-                  </Button>
-                </Link>
+                <Button variant="outline" className="w-full" size="lg" asChild>
+                  <a href="mailto:djorreto@spendplan.cl">Escríbenos para más info</a>
+                </Button>
               </CardContent>
             </Card>
           </div>
@@ -365,29 +346,29 @@ export default function HomePage() {
             <div className="space-y-4">
               <details className="group bg-background rounded-lg border p-4">
                 <summary className="font-medium cursor-pointer list-none flex items-center justify-between">
-                  ¿Qué pasa después de los 3 meses gratis?
+                  ¿Cuánto cuesta durante la marcha blanca?
                   <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
                 </summary>
                 <p className="mt-3 text-muted-foreground text-sm">
-                  Después del período de prueba, tu suscripción continúa a $1.990/mes. Te avisaremos antes de cobrar. Puedes cancelar en cualquier momento.
+                  Es gratis por ahora. Estamos en beta y podríamos ajustar el modelo en el futuro. Avisaremos con anticipación.
                 </p>
               </details>
               <details className="group bg-background rounded-lg border p-4">
                 <summary className="font-medium cursor-pointer list-none flex items-center justify-between">
-                  ¿Puedo cancelar cuando quiera?
+                  ¿Qué significa “beta”?
                   <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
                 </summary>
                 <p className="mt-3 text-muted-foreground text-sm">
-                  Sí, puedes cancelar tu suscripción en cualquier momento desde la configuración de tu cuenta. No hay contratos ni compromisos.
+                  Que el producto está en desarrollo. Puede tener errores, cambios y limitaciones. No garantizamos disponibilidad ni exactitud de la información.
                 </p>
               </details>
               <details className="group bg-background rounded-lg border p-4">
                 <summary className="font-medium cursor-pointer list-none flex items-center justify-between">
-                  ¿Cómo funciona la asesoría gratuita?
+                  ¿Tendrán asesorías financieras?
                   <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
                 </summary>
                 <p className="mt-3 text-muted-foreground text-sm">
-                  Una vez inscrito, puedes agendar tu primera asesoría de 30 minutos sin costo. Te ayudaremos a configurar tu presupuesto y daremos recomendaciones iniciales.
+                  Sí, es parte del roadmap. Si quieres ser de los primeros en probarlas, escríbenos a <a className="underline hover:text-foreground" href="mailto:djorreto@spendplan.cl">djorreto@spendplan.cl</a>.
                 </p>
               </details>
             </div>
@@ -432,11 +413,14 @@ export default function HomePage() {
               <p className="text-muted-foreground mt-2 text-sm">
                 Control de gastos simple para tu hogar.
               </p>
+              <p className="text-muted-foreground mt-2 text-sm">
+                Contacto: <a className="underline hover:text-foreground" href="mailto:djorreto@spendplan.cl">djorreto@spendplan.cl</a>
+              </p>
             </div>
             <div className="flex items-center gap-6 text-sm text-muted-foreground">
               <a href="#" className="hover:text-foreground transition-colors">Privacidad</a>
               <a href="#" className="hover:text-foreground transition-colors">Términos</a>
-              <a href="#" className="hover:text-foreground transition-colors">Contacto</a>
+              <a href="mailto:djorreto@spendplan.cl" className="hover:text-foreground transition-colors">Contacto</a>
             </div>
           </div>
           <div className="mt-8 pt-8 border-t text-center text-sm text-muted-foreground">
