@@ -229,7 +229,7 @@ export default function ExpensesPage() {
         `)
         .eq('household_id', currentHousehold.id)
         .gte('expense_date', `${filterMonth}-01`)
-        .lt('expense_date', `${filterMonth}-32`)
+        .lte('expense_date', `${filterMonth}-31`)
         .order('expense_date', { ascending: false })
 
       setExpenses(exps || [])
