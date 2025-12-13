@@ -7,6 +7,7 @@ import { useHousehold } from '@/hooks/use-household'
 import { AppSidebar } from '@/components/layout/app-sidebar'
 import { AppTopbar } from '@/components/layout/app-topbar'
 import { LoadingPage } from '@/components/ui/loading'
+import { ErrorPage } from '@/components/ui/error'
 import { CopilotChat, CopilotButton } from '@/components/copilot/copilot-chat'
 import { getCurrentMonth } from '@/lib/utils'
 import type { FinancialContext } from '@/lib/ai/copilot'
@@ -23,7 +24,7 @@ export default function AppLayout({
 }) {
   const router = useRouter()
   const { user, profile, loading: authLoading, isAuthenticated } = useAuth()
-  const { currentHousehold, isDemoMode, loading: householdLoading } = useHousehold()
+  const { currentHousehold, isDemoMode, loading: householdLoading, error: householdError, loadHouseholds } = useHousehold()
   const [copilotOpen, setCopilotOpen] = useState(false)
 
   // Build financial context for copilot
@@ -141,13 +142,15 @@ export default function AppLayout({
   // Redirect to onboarding if needed
   useEffect(() => {
     if (!authLoading && !householdLoading && isAuthenticated) {
-      if (profile && !profile.onboarding_completed) {
+      // No decidir onboarding si el profile aún no cargó (evita redirects falsos en refresh)
+      if (!profile) return
+      if (!profile.onboarding_completed) {
         router.push('/onboarding')
-      } else if (!currentHousehold) {
+      } else if (!currentHousehold && !householdError) {
         router.push('/onboarding')
       }
     }
-  }, [authLoading, householdLoading, isAuthenticated, profile, currentHousehold, router])
+  }, [authLoading, householdLoading, isAuthenticated, profile, currentHousehold, householdError, router])
 
   if (authLoading || householdLoading) {
     return <LoadingPage />
@@ -155,6 +158,17 @@ export default function AppLayout({
 
   if (!isAuthenticated) {
     return null
+  }
+
+  // Si hay error cargando hogares, mostrar error con reintento (en vez de “freeze” u onboarding)
+  if (!currentHousehold && householdError) {
+    return (
+      <ErrorPage
+        title="No pudimos cargar tu hogar"
+        message={householdError}
+        onRetry={() => loadHouseholds(true)}
+      />
+    )
   }
 
   return (

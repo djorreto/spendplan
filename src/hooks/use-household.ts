@@ -23,6 +23,18 @@ const CACHE_TTL = 30000 // 30 segundos
 // Dedupe global: múltiples instancias del hook pueden montarse en paralelo
 let householdsInFlight: Promise<void> | null = null
 
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  let t: ReturnType<typeof setTimeout> | undefined
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      t = setTimeout(() => reject(new Error(`Timeout: ${label}`)), timeoutMs)
+    }),
+  ]).finally(() => {
+    if (t) clearTimeout(t)
+  })
+}
+
 // Demo mode helpers
 const DEMO_STORAGE_KEY = 'spendplan_demo_household'
 
@@ -107,14 +119,18 @@ export function useHousehold() {
 
       // Obtener membresías con hogares
       console.log('🏠 Fetching memberships for user:', user.id)
-      const { data: memberships, error } = await supabase
-        .from('household_memberships')
-        .select(`
+      const { data: memberships, error } = await withTimeout(
+        supabase
+          .from('household_memberships')
+          .select(`
           *,
           household:households(*)
         `)
-        .eq('user_id', user.id)
-        .eq('is_active', true)
+          .eq('user_id', user.id)
+          .eq('is_active', true),
+        8000,
+        'loadHouseholds.memberships'
+      )
 
       console.log('🏠 Memberships result:', { memberships, error })
 
@@ -204,7 +220,9 @@ export function useHousehold() {
       setState(prev => ({
         ...prev,
         loading: false,
-        error: 'Error al cargar hogares',
+        error: (error as Error).message?.includes('Timeout')
+          ? 'Timeout cargando hogares. Reintenta.'
+          : 'Error al cargar hogares',
       }))
     }
     finally {

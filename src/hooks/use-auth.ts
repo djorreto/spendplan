@@ -23,6 +23,18 @@ let authInFlight: Promise<void> | null = null
 const DEMO_USER_KEY = 'spendplan_demo_user'
 const DEMO_PROFILE_KEY = 'spendplan_demo_profile'
 
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  let t: ReturnType<typeof setTimeout> | undefined
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      t = setTimeout(() => reject(new Error(`Timeout: ${label}`)), timeoutMs)
+    }),
+  ]).finally(() => {
+    if (t) clearTimeout(t)
+  })
+}
+
 function getDemoUser(): User | null {
   if (typeof window === 'undefined') return null
   const saved = localStorage.getItem(DEMO_USER_KEY)
@@ -75,11 +87,11 @@ export function useAuth() {
     
     console.log('📋 Loading profile for user:', userId)
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single()
+      const { data, error } = await withTimeout(
+        supabase.from('profiles').select('*').eq('id', userId).single(),
+        8000,
+        'loadProfile'
+      )
 
       if (error) {
         console.error('❌ Error loading profile:', error.code, error.message)
@@ -147,10 +159,13 @@ export function useAuth() {
         if (!isMounted) return
         
         if (user) {
-          const profile = await loadProfile(user.id)
+          // No bloquear el render esperando profile: evita “freeze” en refresh si la query se cuelga
           if (isMounted) {
-            setState({ user, profile, loading: false, error: null, isDemoMode: false })
+            setState({ user, profile: null, loading: false, error: null, isDemoMode: false })
           }
+          void loadProfile(user.id).then((p) => {
+            if (isMounted && p) setState((prev) => ({ ...prev, profile: p }))
+          })
         } else if (demoUser && demoProfile) {
           // Usar usuario demo si existe
           if (isMounted) {
@@ -193,10 +208,12 @@ export function useAuth() {
         if (!isMounted) return
         
         if (session?.user) {
-          const profile = await loadProfile(session.user.id)
           if (isMounted) {
-            setState(prev => ({ ...prev, user: session.user, profile, loading: false, isDemoMode: false }))
+            setState(prev => ({ ...prev, user: session.user, profile: prev.profile, loading: false, isDemoMode: false }))
           }
+          void loadProfile(session.user.id).then((p) => {
+            if (isMounted && p) setState((prev) => ({ ...prev, profile: p }))
+          })
         } else {
           // No limpiar si hay demo mode activo
           const demoUser = getDemoUser()
