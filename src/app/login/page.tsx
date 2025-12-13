@@ -37,9 +37,14 @@ export default function LoginPage() {
   // Redirect if already authenticated
   useEffect(() => {
     if (isAuthenticated) {
-      router.push('/app/dashboard')
+      const next = searchParams.get('next')
+      if (next && next.startsWith('/')) {
+        router.push(next)
+      } else {
+        router.push('/app/dashboard')
+      }
     }
-  }, [isAuthenticated, router])
+  }, [isAuthenticated, router, searchParams])
 
   // Demo mode handler
   const handleDemoMode = async () => {

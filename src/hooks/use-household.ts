@@ -2,13 +2,15 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabaseBrowser } from '@/lib/supabase'
-import type { Household, HouseholdMembership, Profile } from '@/types'
+import type { Household, HouseholdInvitation, HouseholdMembership, Profile } from '@/types'
+import { formatSupabaseError, logOp, startOp } from '@/lib/debug-log'
 
 interface HouseholdState {
   households: Household[]
   currentHousehold: Household | null
   membership: HouseholdMembership | null
   members: (HouseholdMembership & { profile: Profile })[]
+  invitations: HouseholdInvitation[]
   loading: boolean
   error: string | null
   isDemoMode: boolean
@@ -41,6 +43,7 @@ export function useHousehold() {
     currentHousehold: null,
     membership: null,
     members: [],
+    invitations: [],
     loading: true,
     error: null,
     isDemoMode: false,
@@ -162,6 +165,8 @@ export function useHousehold() {
       // Cargar miembros si hay hogar actual
       if (currentHousehold) {
         loadMembers(currentHousehold.id)
+        // Mostrar invitaciones pendientes en UI
+        loadInvitations(currentHousehold.id)
       }
     } catch (error) {
       console.error('Error loading households:', error)
@@ -226,6 +231,25 @@ export function useHousehold() {
     }
   }, [supabase])
 
+  const loadInvitations = useCallback(async (householdId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('household_invitations')
+        .select('*')
+        .eq('household_id', householdId)
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+
+      setState(prev => ({
+        ...prev,
+        invitations: (data || []) as HouseholdInvitation[],
+      }))
+    } catch (error) {
+      console.error('Error loading invitations:', error)
+    }
+  }, [supabase])
+
   // Cambiar hogar actual
   const setCurrentHousehold = useCallback((household: Household) => {
     localStorage.setItem('currentHouseholdId', household.id)
@@ -237,7 +261,8 @@ export function useHousehold() {
         : null,
     }))
     loadMembers(household.id)
-  }, [loadMembers])
+    loadInvitations(household.id)
+  }, [loadMembers, loadInvitations])
 
   // Crear nuevo hogar
   const createHousehold = useCallback(async (
@@ -400,6 +425,7 @@ export function useHousehold() {
 
   // Invitar miembro
   const inviteMember = useCallback(async (email: string, role: 'member' | 'owner' = 'member') => {
+    const op = startOp('household.inviteMember', { email, role, householdId: state.currentHousehold?.id })
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user || !state.currentHousehold) throw new Error('No hay hogar seleccionado')
@@ -423,13 +449,33 @@ export function useHousehold() {
       if (error) throw error
 
       // TODO: Enviar email de invitación
+      await loadInvitations(state.currentHousehold.id)
 
-      return { token, error: null }
+      return { token, error: null, opId: op.opId }
     } catch (error) {
       console.error('Error inviting member:', error)
-      return { token: null, error: 'Error al invitar miembro' }
+      logOp(op, 'error', 'invite failed', 'insert.household_invitations', { error: formatSupabaseError(error) })
+      return { token: null, error: (error as { message?: string })?.message || 'Error al invitar miembro', opId: op.opId }
     }
-  }, [supabase, state.currentHousehold])
+  }, [supabase, state.currentHousehold, loadInvitations])
+
+  const revokeInvitation = useCallback(async (invitationId: string) => {
+    const op = startOp('household.revokeInvitation', { invitationId, householdId: state.currentHousehold?.id })
+    try {
+      if (!state.currentHousehold) throw new Error('No hay hogar seleccionado')
+      const { error } = await supabase
+        .from('household_invitations')
+        .delete()
+        .eq('id', invitationId)
+
+      if (error) throw error
+      await loadInvitations(state.currentHousehold.id)
+      return { error: null, opId: op.opId }
+    } catch (error) {
+      logOp(op, 'error', 'revoke failed', 'delete.household_invitations', { error: formatSupabaseError(error) })
+      return { error: (error as { message?: string })?.message || 'Error al cancelar invitación', opId: op.opId }
+    }
+  }, [supabase, state.currentHousehold, loadInvitations])
 
   // Aceptar invitación
   const acceptInvitation = useCallback(async (token: string) => {
@@ -473,29 +519,15 @@ export function useHousehold() {
         .eq('id', invitation.id)
 
       await loadHouseholds()
+      // Refrescar listas para reflejar el cambio inmediatamente
+      await loadMembers(invitation.household_id)
+      await loadInvitations(invitation.household_id)
       return { error: null }
     } catch (error) {
       console.error('Error accepting invitation:', error)
       return { error: error instanceof Error ? error.message : 'Error al aceptar invitación' }
     }
-  }, [supabase, loadHouseholds])
-
-  // Cargar al montar con timeout
-  useEffect(() => {
-    let isMounted = true
-    
-    // Cargar sin timeout - dejamos que Supabase responda
-    loadHouseholds().catch(error => {
-      console.error('Error in household loading:', error)
-      if (isMounted) {
-        setState(prev => ({ ...prev, loading: false, error: 'Error al cargar hogares' }))
-      }
-    })
-    
-    return () => {
-      isMounted = false
-    }
-  }, [loadHouseholds])
+  }, [supabase, loadHouseholds, loadInvitations, loadMembers])
 
   return {
     ...state,
@@ -505,6 +537,8 @@ export function useHousehold() {
     updateHousehold,
     inviteMember,
     acceptInvitation,
+    revokeInvitation,
+    loadInvitations,
     isOwner: state.membership?.role === 'owner',
     isDemoMode: state.isDemoMode,
   }

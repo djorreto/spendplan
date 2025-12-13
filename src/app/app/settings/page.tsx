@@ -36,7 +36,7 @@ import {
 
 export default function SettingsPage() {
   const { profile, updateProfile } = useAuth()
-  const { currentHousehold, members, updateHousehold, inviteMember, isOwner } = useHousehold()
+  const { currentHousehold, members, invitations, updateHousehold, inviteMember, revokeInvitation, isOwner } = useHousehold()
   const { addToast } = useToast()
 
   // Profile state
@@ -114,13 +114,13 @@ export default function SettingsPage() {
     if (!inviteEmail) return
     
     setInviting(true)
-    const { token, error } = await inviteMember(inviteEmail)
+    const { token, error, opId } = await inviteMember(inviteEmail)
     setInviting(false)
     
     if (error) {
-      addToast({ type: 'error', message: error })
+      addToast({ type: 'error', message: `${error}${opId ? ` (opId: ${opId})` : ''}` })
     } else {
-      addToast({ type: 'success', message: `Invitación enviada a ${inviteEmail}` })
+      addToast({ type: 'success', message: `Invitación creada para ${inviteEmail} (pendiente)` })
       setInviteEmail('')
     }
   }
@@ -340,6 +340,68 @@ export default function SettingsPage() {
                   </div>
                 ))}
               </div>
+
+              {/* Pending invitations */}
+              {isOwner && invitations?.length > 0 && (
+                <div className="pt-4 border-t space-y-3">
+                  <div>
+                    <p className="font-medium">Invitaciones pendientes</p>
+                    <p className="text-sm text-muted-foreground">
+                      El invitado aparecerá como miembro cuando acepte la invitación.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    {invitations
+                      .filter(inv => !inv.accepted_at)
+                      .map((inv) => {
+                        const inviteUrl =
+                          typeof window !== 'undefined'
+                            ? `${window.location.origin}/invite/${inv.token}`
+                            : `/invite/${inv.token}`
+
+                        return (
+                          <div key={inv.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 bg-muted rounded-lg">
+                            <div className="min-w-0">
+                              <p className="font-medium truncate">{inv.email}</p>
+                              <p className="text-xs text-muted-foreground">
+                                Rol: {inv.role === 'owner' ? 'Propietario' : 'Miembro'} · Expira: {new Date(inv.expires_at).toLocaleDateString('es-CL')}
+                              </p>
+                            </div>
+                            <div className="flex gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={async () => {
+                                  await navigator.clipboard.writeText(inviteUrl)
+                                  addToast({ type: 'success', message: 'Link de invitación copiado' })
+                                }}
+                              >
+                                <Copy className="mr-2 h-4 w-4" />
+                                Copiar link
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={async () => {
+                                  const res = await revokeInvitation(inv.id)
+                                  if (res.error) {
+                                    addToast({ type: 'error', message: `${res.error}${res.opId ? ` (opId: ${res.opId})` : ''}` })
+                                  } else {
+                                    addToast({ type: 'success', message: 'Invitación cancelada' })
+                                  }
+                                }}
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Cancelar
+                              </Button>
+                            </div>
+                          </div>
+                        )
+                      })}
+                  </div>
+                </div>
+              )}
 
               {/* Invite new member */}
               {isOwner && (
