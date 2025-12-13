@@ -11,6 +11,7 @@ import { LoadingPage } from '@/components/ui/loading'
 import { ErrorPage } from '@/components/ui/error'
 import { CopilotChat, CopilotButton } from '@/components/copilot/copilot-chat'
 import { supabaseBrowser } from '@/lib/supabase'
+import { getMonthDateRange } from '@/lib/utils'
 import type { FinancialContext } from '@/lib/ai/copilot'
 
 // Demo mode constants
@@ -162,8 +163,7 @@ export function AppLayoutClient({ children }: { children: React.ReactNode }) {
 
         // Real mode: Supabase
         const supabase = supabaseBrowser()
-        const startOfMonth = `${selectedMonth}-01`
-        const endOfMonth = `${selectedMonth}-31`
+        const range = getMonthDateRange(selectedMonth)
 
         const [budgetResp, expensesResp] = await Promise.all([
           supabase
@@ -174,8 +174,8 @@ export function AppLayoutClient({ children }: { children: React.ReactNode }) {
             .from('expenses')
             .select('id, amount, description, merchant, expense_date, category_id, is_unbudgeted')
             .eq('household_id', currentHousehold.id)
-            .gte('expense_date', startOfMonth)
-            .lte('expense_date', endOfMonth)
+            .gte('expense_date', range.start)
+            .lt('expense_date', range.endExclusive)
             .order('expense_date', { ascending: false })
             .limit(500),
         ])
@@ -192,8 +192,8 @@ export function AppLayoutClient({ children }: { children: React.ReactNode }) {
           // Keep it simple: respect explicit deactivation and basic date range.
           const start = item.start_date as string | null
           const end = item.end_date as string | null
-          if (start && start > endOfMonth) return false
-          if (!item.is_indefinite && end && end < startOfMonth) return false
+          if (start && start >= range.endExclusive) return false
+          if (!item.is_indefinite && end && end < range.start) return false
           return true
         }
 

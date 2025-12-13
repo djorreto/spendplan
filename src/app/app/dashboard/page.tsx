@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { useHousehold } from '@/hooks/use-household'
 import { useToast } from '@/components/ui/toast'
-import { formatCurrency, formatDate, getCurrentMonth } from '@/lib/utils'
+import { formatCurrency, formatDate, getCurrentMonth, getMonthDateRange } from '@/lib/utils'
 import { supabaseBrowser } from '@/lib/supabase'
 import { endOp, formatSupabaseError, logOp, startOp, withRetry } from '@/lib/debug-log'
 import { 
@@ -196,8 +196,7 @@ export default function DashboardPage() {
       // Load from Supabase for real users (budget + expenses)
       try {
         const supabase = supabaseBrowser()
-        const startOfMonth = `${currentMonth}-01`
-        const endOfMonth = `${currentMonth}-31`
+        const range = getMonthDateRange(currentMonth)
 
         const [expensesResp, budgetResp] = await Promise.all([
           withRetry(
@@ -206,8 +205,8 @@ export default function DashboardPage() {
                 .from('expenses')
                 .select('id, amount, description, merchant, expense_date, category_id, is_unbudgeted, category:categories!expenses_category_id_fkey(name)')
                 .eq('household_id', currentHousehold.id)
-                .gte('expense_date', startOfMonth)
-                .lte('expense_date', endOfMonth)
+                .gte('expense_date', range.start)
+                .lt('expense_date', range.endExclusive)
                 .order('expense_date', { ascending: false })
                 .limit(200),
             { retries: 2, baseDelayMs: 250, ctx: op, step: 'select.expenses' }

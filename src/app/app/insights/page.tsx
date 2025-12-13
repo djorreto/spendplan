@@ -10,7 +10,7 @@ import { useHousehold } from '@/hooks/use-household'
 import { useToast } from '@/components/ui/toast'
 import { supabaseBrowser } from '@/lib/supabase'
 import { endOp, formatSupabaseError, logOp, startOp, withRetry } from '@/lib/debug-log'
-import { formatMonth, getCurrentMonth, getCategoryColor } from '@/lib/utils'
+import { formatMonth, getCurrentMonth, getCategoryColor, getMonthDateRange } from '@/lib/utils'
 import { 
   Sparkles,
   TrendingUp,
@@ -121,8 +121,7 @@ export default function InsightsPage() {
       } else {
         // Real users: load from Supabase
         const supabase = supabaseBrowser()
-        const startOfMonth = `${currentMonth}-01`
-        const endOfMonth = `${currentMonth}-31`
+        const range = getMonthDateRange(currentMonth)
 
         const [budgetResp, expensesResp] = await Promise.all([
           withRetry(
@@ -139,8 +138,8 @@ export default function InsightsPage() {
                 .from('expenses')
                 .select('id, amount, merchant, description, expense_date, category:categories!expenses_category_id_fkey(name)')
                 .eq('household_id', currentHousehold.id)
-                .gte('expense_date', startOfMonth)
-                .lte('expense_date', endOfMonth)
+                .gte('expense_date', range.start)
+                .lt('expense_date', range.endExclusive)
                 .order('expense_date', { ascending: false })
                 .limit(300),
             { retries: 2, baseDelayMs: 250, ctx: op, step: 'select.expenses' }

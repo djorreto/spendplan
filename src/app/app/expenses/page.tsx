@@ -30,7 +30,7 @@ import { useAuth } from '@/hooks/use-auth'
 import { useSelectedMonth } from '@/hooks/use-selected-month'
 import { useToast } from '@/components/ui/toast'
 import { supabaseBrowser } from '@/lib/supabase'
-import { formatCurrency, formatDate, getCurrentDate, getCategoryColor, getPaymentMethodLabel, paymentMethodLabels } from '@/lib/utils'
+import { formatCurrency, formatDate, getCurrentDate, getCategoryColor, getMonthDateRange, getPaymentMethodLabel, paymentMethodLabels } from '@/lib/utils'
 import { 
   Plus, 
   Search,
@@ -213,6 +213,7 @@ export default function ExpensesPage() {
 
     const supabase = supabaseBrowser()
     const op = startOp('expenses.loadData', { householdId: currentHousehold.id, filterMonth })
+    const range = getMonthDateRange(filterMonth)
 
     try {
       // Load categories
@@ -248,8 +249,8 @@ export default function ExpensesPage() {
         `
             )
             .eq('household_id', currentHousehold.id)
-            .gte('expense_date', `${filterMonth}-01`)
-            .lte('expense_date', `${filterMonth}-31`)
+            .gte('expense_date', range.start)
+            .lt('expense_date', range.endExclusive)
             .order('expense_date', { ascending: false }),
         { retries: 2, baseDelayMs: 250, ctx: op, step: 'select.expenses' }
       )

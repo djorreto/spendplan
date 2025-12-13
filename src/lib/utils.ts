@@ -79,6 +79,27 @@ export function getCurrentMonth(): string {
 }
 
 /**
+ * Obtiene el rango de fechas para un mes YYYY-MM
+ * - start: YYYY-MM-01 (inclusive)
+ * - endExclusive: primer día del mes siguiente (exclusive)
+ *
+ * Esto evita bugs tipo "2025-11-31" (fecha inválida) y funciona para febrero.
+ */
+export function getMonthDateRange(month: string): { start: string; endExclusive: string } {
+  const [yearStr, monthStr] = month.split('-')
+  const year = Number(yearStr)
+  const m = Number(monthStr)
+  if (!year || !m) {
+    const cur = getCurrentMonth()
+    return getMonthDateRange(cur)
+  }
+  const start = `${year}-${String(m).padStart(2, '0')}-01`
+  const next = new Date(year, m, 1) // JS month is 0-based; passing m gives next month
+  const endExclusive = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-01`
+  return { start, endExclusive }
+}
+
+/**
  * Obtiene la fecha actual en formato YYYY-MM-DD
  */
 export function getCurrentDate(): string {
