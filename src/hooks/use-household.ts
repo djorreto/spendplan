@@ -339,18 +339,30 @@ export function useHousehold() {
     id: string,
     updates: Partial<Household>
   ) => {
+    console.log('🏠 Updating household:', id, updates)
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('households')
         .update(updates)
         .eq('id', id)
+        .select()
 
-      if (error) throw error
+      if (error) {
+        console.error('🏠 Update error:', error)
+        throw error
+      }
+      
+      console.log('🏠 Update result:', data)
 
-      await loadHouseholds()
+      // Reload with timeout to avoid hanging
+      await Promise.race([
+        loadHouseholds(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 5000))
+      ]).catch(e => console.warn('🏠 loadHouseholds timeout or error:', e))
+      
       return { error: null }
     } catch (error) {
-      console.error('Error updating household:', error)
+      console.error('🏠 Error updating household:', error)
       return { error: 'Error al actualizar hogar' }
     }
   }, [supabase, loadHouseholds])
