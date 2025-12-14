@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic'
 
 import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -141,6 +142,8 @@ function saveDemoExpenses(expenses: Expense[]) {
 export default function ExpensesPage() {
   const { currentHousehold, isDemoMode: hookIsDemoMode } = useHousehold()
   const { selectedMonth } = useSelectedMonth(currentHousehold?.id)
+  const searchParams = useSearchParams()
+  const router = useRouter()
   
   // Check if we're in demo mode - use hook state AND check household ID
   const checkIsDemoMode = () => hookIsDemoMode && currentHousehold?.id.startsWith('demo-')
@@ -178,6 +181,16 @@ export default function ExpensesPage() {
       loadData()
     }
   }, [currentHousehold, filterMonth])
+
+  useEffect(() => {
+    const newParam = searchParams?.get('new')
+    if (newParam && newParam !== '0' && newParam !== 'false') {
+      openNewExpense()
+      // Limpia el query para evitar re-abrir al navegar
+      router.replace('/app/expenses')
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
 
   const loadData = async () => {
     if (!currentHousehold) return

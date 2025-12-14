@@ -101,7 +101,7 @@ export function AppSidebar({
 
       {/* Quick Action */}
       <div className="px-3 py-4">
-        <Link href="/app/expenses/new">
+        <Link href="/app/expenses?new=1">
           <Button 
             className={cn(
               'w-full bg-sidebar-accent hover:bg-sidebar-accent/90 text-white',
