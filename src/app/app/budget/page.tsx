@@ -1046,19 +1046,6 @@ export default function BudgetPage() {
             Gestiona tus ingresos y gastos recurrentes
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 text-sm">
-            <Switch
-              id="show-inactive"
-              checked={showInactive}
-              onCheckedChange={setShowInactive}
-            />
-            <Label htmlFor="show-inactive" className="flex items-center gap-1 cursor-pointer">
-              <History className="h-4 w-4" />
-              Mostrar inactivos
-            </Label>
-          </div>
-        </div>
       </div>
 
       {/* Summary Cards - Formula Style (Clickable) */}

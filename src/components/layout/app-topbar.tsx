@@ -74,6 +74,13 @@ export function AppTopbar({ onToggleSidebar }: AppTopbarProps) {
     return found?.label || 'Menú'
   }, [pathname])
 
+  const formatMonthShort = (month: string) => {
+    const [year, m] = month.split('-').map(Number)
+    const date = new Date(year, (m || 1) - 1, 1)
+    const abbr = date.toLocaleString('es-CL', { month: 'short' })
+    return `${abbr.charAt(0).toUpperCase() + abbr.slice(1, 3)}/${String(year).slice(2)}`
+  }
+
   // Generate last 6 months for selector
   const months = Array.from({ length: 6 }, (_, i) => {
     const date = new Date()
@@ -110,7 +117,7 @@ export function AppTopbar({ onToggleSidebar }: AppTopbarProps) {
             if (h) setCurrentHousehold(h)
           }}
         >
-          <SelectTrigger className="w-[150px] sm:w-[200px] h-10 sm:h-11 text-sm">
+          <SelectTrigger className="w-[130px] sm:w-[180px] h-10 sm:h-11 text-sm">
             <Home className="h-4 w-4 mr-2 shrink-0" />
             <SelectValue placeholder="Seleccionar hogar" />
           </SelectTrigger>
@@ -127,13 +134,13 @@ export function AppTopbar({ onToggleSidebar }: AppTopbarProps) {
 
       {/* Month Selector */}
       <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-        <SelectTrigger className="w-[150px] sm:w-[200px] h-10 sm:h-11 text-sm">
+        <SelectTrigger className="w-[120px] sm:w-[160px] h-10 sm:h-11 text-sm">
           <Calendar className="h-4 w-4 mr-2 shrink-0" />
-          <SelectValue />
+          <span>{formatMonthShort(selectedMonth)}</span>
         </SelectTrigger>
         <SelectContent>
           {months.map(m => (
-            <SelectItem key={m} value={m}>{formatMonth(m)}</SelectItem>
+            <SelectItem key={m} value={m}>{formatMonthShort(m)}</SelectItem>
           ))}
         </SelectContent>
       </Select>
