@@ -34,7 +34,7 @@ import {
 } from '@/components/ui/tabs'
 import { useHousehold } from '@/hooks/use-household'
 import { useToast } from '@/components/ui/toast'
-import { formatCurrency, formatDate, getCurrentMonth, formatMonth, getCategoryColor } from '@/lib/utils'
+import { formatCurrency, formatDate, getCurrentMonth, formatMonth, getCategoryColor, getMonthDateRange } from '@/lib/utils'
 import { 
   Plus, 
   Trash2, 
@@ -464,11 +464,11 @@ export default function BudgetPage() {
     if (!currentHousehold && !isDemo) return
     setLoading(true)
 
-    const op = startOp('budget.loadData', {
-      householdId: currentHousehold?.id || 'demo',
-      month: currentMonth,
-      isDemo,
-    })
+      const op = startOp('budget.loadData', {
+        householdId: currentHousehold?.id || 'demo',
+        month: selectedMonth || currentMonth,
+        isDemo,
+      })
 
     try {
       if (isDemo) {
@@ -490,8 +490,8 @@ export default function BudgetPage() {
         const demoExpenses = getDemoExpenses()
         setAllExpenses(demoExpenses)
         
-        // Load expenses for current month (for budget tracking)
-        setExpenses(demoExpenses.filter(e => e.expense_date.startsWith(currentMonth)))
+        // Load expenses for selected month (for budget tracking)
+        setExpenses(demoExpenses.filter(e => e.expense_date.startsWith(selectedMonth || currentMonth)))
         
         // Save if status changed
         if (JSON.stringify(updatedItems) !== JSON.stringify(data.items)) {
@@ -529,7 +529,7 @@ export default function BudgetPage() {
       }))
       setBudgetItems(updatedItems)
 
-      // Load expenses for current month (tracking + charts)
+      // Load expenses for selected month (tracking + charts)
       const expensesResp = await withRetry(
         () =>
           supabase
@@ -537,7 +537,8 @@ export default function BudgetPage() {
             .select('*')
             .eq('household_id', currentHousehold.id)
             .eq('status', 'confirmed')
-            .gte('expense_date', `${currentMonth}-01`)
+            .gte('expense_date', getMonthDateRange(selectedMonth || currentMonth).start)
+            .lt('expense_date', getMonthDateRange(selectedMonth || currentMonth).endExclusive)
             .order('expense_date', { ascending: false }),
         { retries: 2, baseDelayMs: 250, ctx: op, step: 'select.expenses' }
       )
