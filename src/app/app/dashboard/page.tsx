@@ -505,6 +505,8 @@ export default function DashboardPage() {
   const status = getStatus()
   const StatusIcon = status.icon
 
+  const hasBudget = totalBudget > 0
+
   return (
     <div className="max-w-2xl mx-auto px-3 sm:px-0 space-y-3 sm:space-y-6 pb-6">
       <div className="flex items-start justify-between gap-2">
@@ -547,16 +549,20 @@ export default function DashboardPage() {
             <p className="text-xs text-muted-foreground">Gastado (variable + no pres.)</p>
             <p className="text-lg font-bold">{formatCurrency(totalSpent, currentHousehold?.currency)}</p>
           </div>
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-2">
-            <p className="text-xs text-muted-foreground">Presupuesto usado</p>
-            <div className="flex items-center gap-2">
-              <p className="text-lg font-bold">{budgetUsedPercent}%</p>
-              <div className="w-32 sm:w-40 h-2 rounded-full bg-muted">
-                <div className="h-2 rounded-full bg-primary" style={{ width: `${Math.min(budgetUsedPercent, 100)}%` }} />
+          {hasBudget ? (
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-2">
+              <p className="text-xs text-muted-foreground">Presupuesto usado</p>
+              <div className="flex items-center gap-2">
+                <p className="text-lg font-bold">{budgetUsedPercent}%</p>
+                <div className="w-32 sm:w-40 h-2 rounded-full bg-muted">
+                  <div className="h-2 rounded-full bg-primary" style={{ width: `${Math.min(budgetUsedPercent, 100)}%` }} />
+                </div>
+                <p className="text-[11px] text-muted-foreground">Esperado {expectedPercent}%</p>
               </div>
-              <p className="text-[11px] text-muted-foreground">Esperado {expectedPercent}%</p>
             </div>
-          </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">Configura tu presupuesto para ver el ritmo esperado.</p>
+          )}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-2">
             <p className="text-xs text-muted-foreground">{hasIncome ? 'Balance real' : 'Presupuesto restante'}</p>
             <p className="text-lg font-bold">
