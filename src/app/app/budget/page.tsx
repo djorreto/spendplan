@@ -1063,6 +1063,8 @@ export default function BudgetPage() {
           </CardContent>
         </Card>
 
+        <span className="flex items-center justify-center text-xl font-bold text-muted-foreground">−</span>
+
         {/* Gastos Fijos */}
         <Card 
           className="border-blue-200 bg-blue-50/50 cursor-pointer hover:border-blue-400 hover:shadow-sm transition-all"
@@ -1075,6 +1077,8 @@ export default function BudgetPage() {
             </p>
           </CardContent>
         </Card>
+
+        <span className="flex items-center justify-center text-xl font-bold text-muted-foreground">−</span>
 
         {/* Gastos Variables */}
         <Card 
@@ -1094,6 +1098,8 @@ export default function BudgetPage() {
           </CardContent>
         </Card>
 
+        <span className="flex items-center justify-center text-xl font-bold text-muted-foreground">−</span>
+
         {/* No Presupuestados */}
         <Card 
           className="border-red-300 bg-red-50 cursor-pointer hover:border-red-500 hover:shadow-sm transition-all"
@@ -1107,6 +1113,8 @@ export default function BudgetPage() {
             <p className="text-[10px] text-red-500">{unbudgetedExpenses.length} gasto(s)</p>
           </CardContent>
         </Card>
+
+        <span className="flex items-center justify-center text-xl font-bold text-muted-foreground">=</span>
 
         {/* Disponible Real */}
         <Card 
