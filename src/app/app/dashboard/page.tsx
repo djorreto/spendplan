@@ -264,7 +264,9 @@ export default function DashboardPage() {
         if (budgetResp.error) throw budgetResp.error
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const monthExpenses: any[] = expensesResp.data || []
+        const monthExpenses: any[] = (expensesResp.data || []).filter(
+          (e: any) => e.expense_date >= range.start && e.expense_date < range.endExclusive
+        )
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const budgetItems: any[] = budgetResp.data || []
 
