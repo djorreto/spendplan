@@ -50,7 +50,7 @@ export function AppTopbar() {
   }
 
   return (
-    <header className="sticky top-0 z-40 flex h-16 items-center gap-4 border-b bg-background px-4 md:px-6">
+    <header className="sticky top-0 z-40 flex h-14 sm:h-16 items-center gap-3 sm:gap-4 border-b bg-background px-3 sm:px-6">
       {/* Household Selector */}
       {households.length > 1 && (
         <Select
@@ -60,8 +60,8 @@ export function AppTopbar() {
             if (h) setCurrentHousehold(h)
           }}
         >
-          <SelectTrigger className="w-[140px] sm:w-[180px]">
-            <Home className="h-4 w-4 mr-2" />
+          <SelectTrigger className="w-[130px] sm:w-[180px] h-10 sm:h-11 text-sm">
+            <Home className="h-4 w-4 mr-2 shrink-0" />
             <SelectValue placeholder="Seleccionar hogar" />
           </SelectTrigger>
           <SelectContent>
@@ -81,8 +81,8 @@ export function AppTopbar() {
 
       {/* Month Selector */}
       <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-        <SelectTrigger className="w-[150px] sm:w-[220px]">
-          <Calendar className="h-4 w-4 mr-2" />
+        <SelectTrigger className="w-[150px] sm:w-[200px] h-10 sm:h-11 text-sm">
+          <Calendar className="h-4 w-4 mr-2 shrink-0" />
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -100,7 +100,7 @@ export function AppTopbar() {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="flex items-center gap-2 px-2">
-              <Avatar className="h-8 w-8 ring-2 ring-primary/20 bg-muted">
+              <Avatar className="h-7 w-7 sm:h-8 sm:w-8 ring-2 ring-primary/20 bg-muted">
                 <AvatarImage src={profile?.avatar_url || undefined} alt={profile?.full_name || ''} />
                 <AvatarFallback className="bg-primary text-primary-foreground flex items-center justify-center">
                   <User className="h-5 w-5" />
@@ -108,7 +108,7 @@ export function AppTopbar() {
               </Avatar>
               <div className="hidden md:block text-left">
                 <p className="text-sm font-medium leading-none">{profile?.full_name || 'Usuario'}</p>
-                <p className="text-xs text-muted-foreground">{profile?.email}</p>
+                <p className="text-xs text-muted-foreground truncate max-w-[140px]">{profile?.email}</p>
               </div>
               <ChevronDown className="hidden md:block h-4 w-4 text-muted-foreground" />
             </Button>

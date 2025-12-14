@@ -382,10 +382,10 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="space-y-6 max-w-2xl mx-auto">
-        <div className="h-8 w-48 bg-muted animate-pulse rounded" />
-        <div className="h-40 bg-muted animate-pulse rounded-lg" />
-        <div className="h-64 bg-muted animate-pulse rounded-lg" />
+      <div className="space-y-3 sm:space-y-6 max-w-2xl mx-auto px-3 sm:px-0">
+        <div className="h-8 w-40 bg-muted animate-pulse rounded" />
+        <div className="h-28 sm:h-36 bg-muted animate-pulse rounded-lg" />
+        <div className="h-40 sm:h-52 bg-muted animate-pulse rounded-lg" />
       </div>
     )
   }
@@ -506,11 +506,10 @@ export default function DashboardPage() {
   const StatusIcon = status.icon
 
   return (
-    <div className="space-y-6 max-w-2xl mx-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">¿Cómo va el mes?</h1>
+    <div className="max-w-2xl mx-auto px-3 sm:px-0 space-y-3 sm:space-y-6 pb-6">
+      <div className="flex items-start justify-between gap-2">
+        <div className="space-y-0.5">
+          <h1 className="text-xl sm:text-2xl font-bold">¿Cómo va el mes?</h1>
           <p className="text-muted-foreground text-sm">
             {formatMonth(selectedMonth)} · Día {data?.daysPassed} de {data?.daysInMonth}
           </p>
@@ -523,172 +522,129 @@ export default function DashboardPage() {
         </Link>
       </div>
 
-      {/* Status Card */}
-      <Card className={`${status.bg} border-2`}>
-        <CardContent className="p-6">
-          <div className="flex items-start gap-4">
-            <div className={`p-3 rounded-full ${status.bg}`}>
-              <StatusIcon className={`h-6 w-6 ${status.color}`} />
+      <Card className="border rounded-xl">
+        <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-2 sm:space-y-0 pb-3">
+          <div className="flex items-center gap-3">
+            <div className={`h-9 w-9 sm:h-10 sm:w-10 rounded-full flex items-center justify-center ${status.bg}`}>
+              <StatusIcon className={`h-5 w-5 ${status.color}`} />
             </div>
-            <div className="flex-1 min-w-0">
-              <p className={`text-base sm:text-lg font-medium leading-snug break-words ${status.color}`}>
-                {status.message}
-              </p>
-              
-              {'showBudgetLink' in status && status.showBudgetLink && (
-                <div className="mt-4">
-                  <Link href="/app/budget">
-                    <Button variant="default" size="sm">
-                      <Plus className="mr-2 h-4 w-4" />
-                      Configurar presupuesto
-                    </Button>
-                  </Link>
-                </div>
-              )}
-              
-              {totalBudget > 0 && (
-                <div className="mt-4 space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span>Presupuesto variable usado</span>
-                    <span className="font-medium">{budgetUsedPercent}%</span>
-                  </div>
-                  <Progress 
-                    value={Math.min(budgetUsedPercent, 100)} 
-                    className="h-3"
-                  />
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>{formatCurrency(totalSpent, currentHousehold?.currency)} gastado</span>
-                    <span>de {formatCurrency(totalBudget, currentHousehold?.currency)}</span>
-                  </div>
-                </div>
-              )}
+            <div>
+              <CardTitle className="text-base sm:text-lg">Resumen rápido</CardTitle>
+              <CardDescription className="text-xs sm:text-sm">
+                {formatMonth(selectedMonth)} · Día {data?.daysPassed} de {data?.daysInMonth}
+              </CardDescription>
             </div>
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Spend by person */}
-      <Card>
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <CardTitle className="text-lg">Gasto por persona</CardTitle>
-              <CardDescription>Según quién registró el gasto (created_by)</CardDescription>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIncludeFixedInPeople((v) => !v)}
-              className="whitespace-nowrap"
-            >
-              {includeFixedInPeople ? 'Ocultar fijos' : 'Incluir fijos'}
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {spendRows.length === 0 ? (
-            <div className="text-sm text-muted-foreground">Aún no hay gastos registrados este mes.</div>
-          ) : (
-            <div className="space-y-4">
-              {spendRows.map((row) => (
-                <div key={row.id} className="space-y-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <Avatar className="h-8 w-8">
-                        <AvatarImage src={row.avatar_url || undefined} />
-                        <AvatarFallback className={row.id === 'household-fixed' ? 'bg-muted text-foreground' : 'bg-primary text-primary-foreground'}>
-                          {row.id === 'household-fixed' ? 'H' : getInitials(row.name || 'U')}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium truncate">{row.name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {row.id === 'household-fixed' ? 'Plan fijo del hogar' : `${row.count} gasto(s)`}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="text-sm font-semibold tabular-nums">
-                      {formatCurrency(row.amount, currentHousehold?.currency)}
-                    </div>
-                  </div>
-                  <Progress value={maxSpend > 0 ? Math.round((row.amount / maxSpend) * 100) : 0} className="h-2" />
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Quick Link to Budget */}
-      <Link href="/app/budget">
-        <Card className="hover:bg-muted/50 transition-colors cursor-pointer">
-          <CardContent className="p-4 flex items-center justify-between">
-            <span className="font-medium">Ver presupuesto completo</span>
-            <ArrowRight className="h-5 w-5 text-muted-foreground" />
-          </CardContent>
-        </Card>
-      </Link>
-
-      {/* Recent Expenses */}
-      <Card>
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="text-lg">Gastos Recientes</CardTitle>
-              <CardDescription>Últimas transacciones del mes</CardDescription>
-            </div>
-            <Link href="/app/expenses">
-              <Button variant="ghost" size="sm">
-                Ver todos
-                <ArrowRight className="ml-1 h-4 w-4" />
-              </Button>
+          <Button size="sm" variant="outline" asChild className="w-full sm:w-auto">
+            <Link href="/app/budget">
+              <Wallet className="h-4 w-4 mr-2" />
+              Presupuesto
             </Link>
-          </div>
+          </Button>
         </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            {data?.recentExpenses && data.recentExpenses.length > 0 ? (
-              data.recentExpenses.map((expense) => (
-                <div key={expense.id} className="flex items-center justify-between py-2 border-b last:border-0">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center">
-                      <Receipt className="h-5 w-5 text-muted-foreground" />
-                    </div>
-                    <div>
-                      <p className="font-medium text-sm">{expense.merchant || expense.description || 'Gasto'}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {expense.category_name} · {formatDate(expense.expense_date)}
-                        {expense.created_by_name ? ` · ${expense.created_by_name}` : ''}
-                      </p>
-                    </div>
+        <CardContent className="space-y-2">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-2">
+            <p className="text-xs text-muted-foreground">Gastado (variable + no pres.)</p>
+            <p className="text-lg font-bold">{formatCurrency(totalSpent, currentHousehold?.currency)}</p>
+          </div>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-2">
+            <p className="text-xs text-muted-foreground">Presupuesto usado</p>
+            <div className="flex items-center gap-2">
+              <p className="text-lg font-bold">{budgetUsedPercent}%</p>
+              <div className="w-32 sm:w-40 h-2 rounded-full bg-muted">
+                <div className="h-2 rounded-full bg-primary" style={{ width: `${Math.min(budgetUsedPercent, 100)}%` }} />
+              </div>
+              <p className="text-[11px] text-muted-foreground">Esperado {expectedPercent}%</p>
+            </div>
+          </div>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-2">
+            <p className="text-xs text-muted-foreground">{hasIncome ? 'Balance real' : 'Presupuesto restante'}</p>
+            <p className="text-lg font-bold">
+              {hasIncome
+                ? formatCurrency(data?.availableReal || 0, currentHousehold?.currency)
+                : formatCurrency(budgetRemaining, currentHousehold?.currency)}
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="space-y-3 sm:space-y-4">
+        <Card className="rounded-xl border">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <CardTitle className="text-base sm:text-lg">Gastos recientes</CardTitle>
+                <CardDescription className="text-xs sm:text-sm">Últimos movimientos</CardDescription>
+              </div>
+              <Button variant="ghost" size="sm" asChild className="px-2 h-8">
+                <Link href="/app/expenses">
+                  Ver todos <ArrowRight className="h-4 w-4 ml-1" />
+                </Link>
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {data?.recentExpenses.length === 0 && (
+              <p className="text-sm text-muted-foreground">Aún no hay gastos registrados este mes.</p>
+            )}
+            {data?.recentExpenses.map((e) => (
+              <div key={e.id} className="rounded-lg border p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium truncate max-w-[220px] sm:max-w-none">
+                      {e.merchant || e.description || 'Gasto'}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {formatDate(e.expense_date)} · {e.category_name}
+                      {e.created_by_name ? ` · ${e.created_by_name}` : ''}
+                    </p>
                   </div>
-                  <span className="font-semibold tabular-nums">
-                    {formatCurrency(expense.amount, currentHousehold?.currency)}
-                  </span>
-                </div>
-              ))
-            ) : (
-              <div className="text-center py-8 space-y-4">
-                <div className="w-16 h-16 mx-auto rounded-full bg-primary/10 flex items-center justify-center">
-                  <Wallet className="h-8 w-8 text-primary" />
-                </div>
-                <div>
-                  <p className="font-medium text-lg">¡Bienvenido a SpendPlan!</p>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Comienza registrando tu primer gasto del mes
+                  <p className="text-base font-semibold whitespace-nowrap">
+                    {formatCurrency(e.amount, currentHousehold?.currency)}
                   </p>
                 </div>
-                <Link href="/app/expenses/new">
-                  <Button className="mt-2">
-                    <Plus className="mr-2 h-4 w-4" />
-                    Registrar primer gasto
-                  </Button>
-                </Link>
               </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+            ))}
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-xl border">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <CardTitle className="text-base sm:text-lg">Gasto por persona</CardTitle>
+                <CardDescription className="text-xs sm:text-sm">Según quién registró (created_by)</CardDescription>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setIncludeFixedInPeople((p) => !p)}
+                className="h-8 px-3"
+              >
+                {includeFixedInPeople ? 'Ocultar fijos' : 'Incluir fijos'}
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {spendRows.length === 0 && <p className="text-sm text-muted-foreground">Sin datos este mes.</p>}
+            {spendRows.map((row) => (
+              <div key={row.id} className="flex items-center gap-3">
+                <Avatar className="h-8 w-8">
+                  <AvatarImage src={row.avatar_url || undefined} />
+                  <AvatarFallback>{row.id === 'household-fixed' ? 'H' : getInitials(row.name)}</AvatarFallback>
+                </Avatar>
+                <div className="flex-1">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between text-sm gap-1">
+                    <span className="font-medium truncate max-w-[200px] sm:max-w-none">{row.name}</span>
+                    <span className="text-muted-foreground whitespace-nowrap">{formatCurrency(row.amount, currentHousehold?.currency)}</span>
+                  </div>
+                  <Progress value={maxSpend ? (row.amount / maxSpend) * 100 : 0} className="h-2" />
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   )
 }
