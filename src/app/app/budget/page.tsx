@@ -33,6 +33,7 @@ import {
   TabsTrigger,
 } from '@/components/ui/tabs'
 import { useHousehold } from '@/hooks/use-household'
+import { useSelectedMonth } from '@/hooks/use-selected-month'
 import { useToast } from '@/components/ui/toast'
 import { formatCurrency, formatDate, getCurrentMonth, formatMonth, getCategoryColor, getMonthDateRange } from '@/lib/utils'
 import { 
@@ -406,6 +407,7 @@ const TYPE_CONFIG = {
 
 export default function BudgetPage() {
   const { currentHousehold, isDemoMode: isHouseholdDemo } = useHousehold()
+  const { selectedMonth } = useSelectedMonth(currentHousehold?.id)
   const { profile } = useAuth()
   const { addToast } = useToast()
   
@@ -458,7 +460,7 @@ export default function BudgetPage() {
     if (!currentHousehold && !isDemo) return
     loadData()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentHousehold?.id, isDemo])
+  }, [currentHousehold?.id, isDemo, selectedMonth])
 
   const loadData = async () => {
     if (!currentHousehold && !isDemo) return
