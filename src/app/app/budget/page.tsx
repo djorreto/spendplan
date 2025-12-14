@@ -39,7 +39,6 @@ import { formatCurrency, formatDate, getCurrentMonth, formatMonth, getCategoryCo
 import { 
   Plus, 
   Trash2, 
-  Save,
   TrendingUp,
   Wallet,
   AlertTriangle,
@@ -412,7 +411,6 @@ export default function BudgetPage() {
   const { addToast } = useToast()
   
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
   const [categories, setCategories] = useState<Category[]>([])
   const [budgetItems, setBudgetItems] = useState<BudgetItem[]>([])
   const [expenses, setExpenses] = useState<Expense[]>([])
@@ -559,37 +557,6 @@ export default function BudgetPage() {
     } finally {
       setLoading(false)
     }
-  }
-
-  const handleSave = async () => {
-    setSaving(true)
-    
-    if (isDemo) {
-      saveBudgetData({ items: budgetItems })
-      addToast({ type: 'success', message: 'Presupuesto guardado' })
-    } else if (currentHousehold && profile) {
-      const op = startOp('budget.saveAll', { householdId: currentHousehold.id, itemCount: budgetItems.length })
-      // Save all items to Supabase
-      let hasError = false
-      const failures: Array<{ itemId: string; error: string }> = []
-      for (const item of budgetItems) {
-        const result = await saveBudgetItemToSupabase(item, currentHousehold.id, profile.id)
-        if (!result.success) {
-          hasError = true
-          failures.push({ itemId: item.id, error: result.error || 'desconocido' })
-        }
-      }
-      if (hasError) {
-        logOp(op, 'error', 'some items failed', 'saveAll', { failures })
-        endOp(op, false, { failuresCount: failures.length })
-        addToast({ type: 'error', message: `Error al guardar algunos items (opId: ${op.opId})` })
-      } else {
-        endOp(op, true)
-        addToast({ type: 'success', message: `Presupuesto guardado (opId: ${op.opId})` })
-      }
-    }
-    
-    setSaving(false)
   }
 
   // Filter items
@@ -1091,10 +1058,6 @@ export default function BudgetPage() {
               Mostrar inactivos
             </Label>
           </div>
-          <Button onClick={handleSave} disabled={saving}>
-            <Save className="mr-2 h-4 w-4" />
-            Guardar
-          </Button>
         </div>
       </div>
 
