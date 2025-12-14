@@ -68,8 +68,8 @@ export function AppTopbar() {
   return (
     <>
     <header className="sticky top-0 z-40 flex h-14 sm:h-16 items-center gap-3 sm:gap-4 border-b bg-background px-3 sm:px-6">
-      {/* Household Selector */}
-      {households.length > 1 && (
+      {/* Household Selector (siempre visible para crear/cambiar) */}
+      {households.length > 0 && (
         <Select
           value={currentHousehold?.id}
           onValueChange={(id) => {
@@ -77,28 +77,23 @@ export function AppTopbar() {
               setNewHomeOpen(true)
               return
             }
-            const h = households.find(h => h.id === id)
+            const h = households.find((h) => h.id === id)
             if (h) setCurrentHousehold(h)
           }}
         >
-          <SelectTrigger className="w-[130px] sm:w-[180px] h-10 sm:h-11 text-sm">
+          <SelectTrigger className="w-[150px] sm:w-[200px] h-10 sm:h-11 text-sm">
             <Home className="h-4 w-4 mr-2 shrink-0" />
             <SelectValue placeholder="Seleccionar hogar" />
           </SelectTrigger>
           <SelectContent>
-            {households.map(h => (
-              <SelectItem key={h.id} value={h.id}>{h.name}</SelectItem>
+            {households.map((h) => (
+              <SelectItem key={h.id} value={h.id}>
+                {h.name}
+              </SelectItem>
             ))}
             <SelectItem value="create-new">+ Crear nuevo hogar</SelectItem>
           </SelectContent>
         </Select>
-      )}
-
-      {households.length <= 1 && currentHousehold && (
-        <div className="flex items-center gap-2 text-sm">
-          <Home className="h-4 w-4 text-muted-foreground" />
-          <span className="font-medium">{currentHousehold.name}</span>
-        </div>
       )}
 
       {/* Month Selector */}
