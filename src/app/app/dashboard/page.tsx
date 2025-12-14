@@ -168,13 +168,17 @@ export default function DashboardPage() {
       
       const budgetedCategoryIds = new Set(activeVariable.map(v => v.category_id))
       
-      const totalVariableSpent = monthExpenses
-        .filter(e => e.category_id && budgetedCategoryIds.has(e.category_id))
-        .reduce((sum, e) => sum + e.amount, 0)
+      const totalVariableSpent = monthExpenses.reduce((sum, e) => {
+        const isBudgetedCat = !!e.category_id && budgetedCategoryIds.has(e.category_id)
+        const countAsVariable = isBudgetedCat && !e.is_unbudgeted
+        return countAsVariable ? sum + e.amount : sum
+      }, 0)
       
-      const totalUnbudgeted = monthExpenses
-        .filter(e => e.is_unbudgeted || !e.category_id || !budgetedCategoryIds.has(e.category_id))
-        .reduce((sum, e) => sum + e.amount, 0)
+      const totalUnbudgeted = monthExpenses.reduce((sum, e) => {
+        const isBudgetedCat = !!e.category_id && budgetedCategoryIds.has(e.category_id)
+        const countAsUnbudgeted = e.is_unbudgeted || !isBudgetedCat
+        return countAsUnbudgeted ? sum + e.amount : sum
+      }, 0)
       
       const availableReal = totalIncome - totalFixed - totalVariableSpent - totalUnbudgeted
       
@@ -288,13 +292,17 @@ export default function DashboardPage() {
 
         const budgetedCategoryIds = new Set(activeVariable.map((v) => v.category_id).filter(Boolean))
 
-        const totalVariableSpent = monthExpenses
-          .filter((e) => e.category_id && budgetedCategoryIds.has(e.category_id))
-          .reduce((sum, e) => sum + (e.amount || 0), 0)
+        const totalVariableSpent = monthExpenses.reduce((sum, e) => {
+          const isBudgetedCat = !!e.category_id && budgetedCategoryIds.has(e.category_id)
+          const countAsVariable = isBudgetedCat && !e.is_unbudgeted
+          return countAsVariable ? sum + (e.amount || 0) : sum
+        }, 0)
 
-        const totalUnbudgeted = monthExpenses
-          .filter((e) => e.is_unbudgeted || !e.category_id || !budgetedCategoryIds.has(e.category_id))
-          .reduce((sum, e) => sum + (e.amount || 0), 0)
+        const totalUnbudgeted = monthExpenses.reduce((sum, e) => {
+          const isBudgetedCat = !!e.category_id && budgetedCategoryIds.has(e.category_id)
+          const countAsUnbudgeted = e.is_unbudgeted || !isBudgetedCat
+          return countAsUnbudgeted ? sum + (e.amount || 0) : sum
+        }, 0)
 
         const availableReal = totalIncome - totalFixed - totalVariableSpent - totalUnbudgeted
 
