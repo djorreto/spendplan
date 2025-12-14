@@ -315,10 +315,6 @@ export default function InsightsPage() {
             <p className="text-muted-foreground mb-6 max-w-md mx-auto">
               Genera un análisis inteligente de tus gastos del mes para obtener recomendaciones personalizadas.
             </p>
-            <Button onClick={generateInsights} disabled={generating}>
-              <Sparkles className="mr-2 h-4 w-4" />
-              Generar Insights
-            </Button>
           </CardContent>
         </Card>
       ) : (
