@@ -352,6 +352,27 @@ function isItemActiveByDate(item: BudgetItem, referenceDate: Date = new Date()):
   return true
 }
 
+// Helpers para rangos mensuales (para detectar solapes)
+const monthIndex = (dateStr: string) => {
+  const [y, m] = dateStr.split('-').map(Number)
+  return (y || 0) * 12 + ((m || 1) - 1)
+}
+
+const monthToString = (idx: number) => {
+  const y = Math.floor(idx / 12)
+  const m = (idx % 12) + 1
+  return `${y}-${String(m).padStart(2, '0')}-01`
+}
+
+const rangesOverlap = (aStart: number, aEnd: number, bStart: number, bEnd: number) =>
+  aStart <= bEnd && bStart <= aEnd
+
+const formatRangeDisplay = (item: BudgetItem) => {
+  const start = (item.start_date || '').slice(0, 7)
+  const end = item.is_indefinite || !item.end_date ? 'indef.' : (item.end_date || '').slice(0, 7)
+  return `${start} - ${end}`
+}
+
 // Calculate monthly equivalent
 function getMonthlyAmount(item: BudgetItem): number {
   // One-time items return full amount (they only apply to one specific month)
@@ -447,9 +468,11 @@ export default function BudgetPage() {
   
   // All expenses (for charts - last 12 months)
   const [allExpenses, setAllExpenses] = useState<Expense[]>([])
-  const [tableMonths, setTableMonths] = useState<6 | 12>(6)
+  const [tableMonths, setTableMonths] = useState<7 | 13>(7)
   const [tableAnchorMonth, setTableAnchorMonth] = useState(getCurrentMonth())
   const [tableExpenses, setTableExpenses] = useState<Expense[]>([])
+  const [conflictItems, setConflictItems] = useState<BudgetItem[]>([])
+  const [conflictDialogOpen, setConflictDialogOpen] = useState(false)
   
   // Chart filter states
   const [chartMonthsFilter, setChartMonthsFilter] = useState(12) // Last N months
@@ -460,8 +483,31 @@ export default function BudgetPage() {
     // Evitar “flash” a cero: solo cargar cuando existe household real o demo
     if (!currentHousehold && !isDemo) return
     loadData()
+    loadTableExpenses()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentHousehold?.id, isDemo, selectedMonth])
+  }, [currentHousehold?.id, isDemo, selectedMonth, tableAnchorMonth, tableMonths])
+
+  const loadTableExpenses = async () => {
+    if (isDemo) {
+      setTableExpenses(getDemoExpenses())
+      return
+    }
+    if (!currentHousehold) return
+    const supabase = supabaseBrowser()
+    const anchorIdx = monthIndex(tableAnchorMonth)
+    const startIdx = Math.max(anchorIdx - Math.floor((tableMonths - 1) / 2), 0)
+    const endIdx = startIdx + tableMonths
+    const rangeStart = monthToString(startIdx)
+    const rangeEndExclusive = monthToString(endIdx)
+    const { data, error } = await supabase
+      .from('expenses')
+      .select('*')
+      .eq('household_id', currentHousehold.id)
+      .gte('expense_date', rangeStart)
+      .lt('expense_date', rangeEndExclusive)
+      .order('expense_date', { ascending: false })
+    if (!error && data) setTableExpenses(data as Expense[])
+  }
 
   const loadData = async () => {
     if (!currentHousehold && !isDemo) return
@@ -851,13 +897,22 @@ export default function BudgetPage() {
     // Check if active based on dates
     newItem.is_active = isItemActiveByDate(newItem)
 
-    // For variable expenses, check if category already has a budget (prevent duplicates)
-    if (isVariableExpense && !editingItem) {
-      const existingVariableForCategory = budgetItems.find(
-        i => i.kind === 'expense' && i.type === 'variable' && i.category_id === categoryId
-      )
-      if (existingVariableForCategory) {
-        addToast({ type: 'error', message: 'Ya existe un presupuesto variable para esta categoría' })
+    // Para variables: validar solapes de rango en la misma categoría
+    if (isVariableExpense && categoryId) {
+      const newStartIdx = monthIndex(newItem.start_date)
+      const newEndIdx = newItem.is_indefinite || !newItem.end_date ? monthIndex('9999-12-01') : monthIndex(newItem.end_date)
+      const conflicts = budgetItems
+        .filter(i => i.kind === 'expense' && i.type === 'variable' && i.category_id === categoryId)
+        .filter(i => !editingItem || i.id !== editingItem.id)
+        .filter(i => {
+          const s = monthIndex(i.start_date)
+          const e = i.is_indefinite || !i.end_date ? monthIndex('9999-12-01') : monthIndex(i.end_date)
+          return rangesOverlap(newStartIdx, newEndIdx, s, e)
+        })
+
+      if (conflicts.length > 0) {
+        setConflictItems(conflicts)
+        setConflictDialogOpen(true)
         return
       }
     }
@@ -2471,6 +2526,38 @@ export default function BudgetPage() {
             <Button onClick={saveQuickExpense} className="bg-amber-600 hover:bg-amber-700">
               <Plus className="mr-2 h-4 w-4" /> Registrar Gasto
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Conflictos de rango en variables */}
+      <Dialog open={conflictDialogOpen} onOpenChange={(open) => {
+        setConflictDialogOpen(open)
+        if (!open) setConflictItems([])
+      }}>
+        <DialogContent className="sm:max-w-[480px]">
+          <DialogHeader>
+            <DialogTitle>Conflicto de periodo</DialogTitle>
+            <DialogDescription>
+              Ya existen presupuestos variables para esta categoría en estos periodos. Ajusta las fechas para evitar solapes.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            {conflictItems.map((item) => {
+              const cat = categories.find(c => c.id === item.category_id)
+              return (
+                <div key={item.id} className="p-3 rounded-lg border bg-muted/50 flex items-center justify-between">
+                  <div>
+                    <p className="font-medium">{item.name || cat?.name || 'Variable'}</p>
+                    <p className="text-sm text-muted-foreground">{formatRangeDisplay(item)}</p>
+                  </div>
+                  <Badge variant="outline">{cat?.name || 'Categoría'}</Badge>
+                </div>
+              )
+            })}
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setConflictDialogOpen(false)}>Entendido</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
