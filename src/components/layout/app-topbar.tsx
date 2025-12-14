@@ -119,7 +119,7 @@ export function AppTopbar() {
             <Button variant="ghost" className="flex items-center gap-2 px-2">
               <Avatar className="h-7 w-7 sm:h-8 sm:w-8 ring-2 ring-primary/20 bg-muted">
                 <AvatarImage src={profile?.avatar_url || undefined} alt={profile?.full_name || ''} />
-                <AvatarFallback className="bg-primary text-primary-foreground flex items-center justify-center">
+                <AvatarFallback className="bg-neutral-200 text-neutral-700 flex items-center justify-center">
                   <User className="h-5 w-5" />
                 </AvatarFallback>
               </Avatar>
