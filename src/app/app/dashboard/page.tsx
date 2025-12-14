@@ -544,7 +544,7 @@ export default function DashboardPage() {
             </Link>
           </Button>
         </CardHeader>
-        <CardContent className="space-y-2">
+        <CardContent className="space-y-2 sm:space-y-3 p-4 sm:p-5">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-2">
             <p className="text-xs text-muted-foreground">Gastado (variable + no pres.)</p>
             <p className="text-lg font-bold">{formatCurrency(totalSpent, currentHousehold?.currency)}</p>
@@ -582,18 +582,28 @@ export default function DashboardPage() {
                 <CardTitle className="text-base sm:text-lg">Gastos recientes</CardTitle>
                 <CardDescription className="text-xs sm:text-sm">Últimos movimientos</CardDescription>
               </div>
-              <Button variant="ghost" size="sm" asChild className="px-2 h-8">
-                <Link href="/app/expenses">
-                  Ver todos <ArrowRight className="h-4 w-4 ml-1" />
-                </Link>
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="px-2 h-8 sm:hidden"
+                  onClick={() => setCollapseRecent((v) => !v)}
+                >
+                  {collapseRecent ? 'Expandir' : 'Contraer'}
+                </Button>
+                <Button variant="ghost" size="sm" asChild className="px-2 h-8">
+                  <Link href="/app/expenses">
+                    Ver todos <ArrowRight className="h-4 w-4 ml-1" />
+                  </Link>
+                </Button>
+              </div>
             </div>
           </CardHeader>
           <CardContent className="space-y-2">
-            {data?.recentExpenses.length === 0 && (
+            {!collapseRecent && data?.recentExpenses.length === 0 && (
               <p className="text-sm text-muted-foreground">Aún no hay gastos registrados este mes.</p>
             )}
-            {data?.recentExpenses.map((e) => (
+            {!collapseRecent && data?.recentExpenses.map((e) => (
               <div key={e.id} className="rounded-lg border p-3">
                 <div className="flex items-start justify-between gap-2">
                   <div className="space-y-1">
@@ -621,19 +631,29 @@ export default function DashboardPage() {
                 <CardTitle className="text-base sm:text-lg">Gasto por persona</CardTitle>
                 <CardDescription className="text-xs sm:text-sm">Según quién registró (created_by)</CardDescription>
               </div>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setIncludeFixedInPeople((p) => !p)}
-                className="h-8 px-3"
-              >
-                {includeFixedInPeople ? 'Ocultar fijos' : 'Incluir fijos'}
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="px-2 h-8 sm:hidden"
+                  onClick={() => setCollapsePeople((v) => !v)}
+                >
+                  {collapsePeople ? 'Expandir' : 'Contraer'}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setIncludeFixedInPeople((p) => !p)}
+                  className="h-8 px-3"
+                >
+                  {includeFixedInPeople ? 'Ocultar fijos' : 'Incluir fijos'}
+                </Button>
+              </div>
             </div>
           </CardHeader>
           <CardContent className="space-y-2">
-            {spendRows.length === 0 && <p className="text-sm text-muted-foreground">Sin datos este mes.</p>}
-            {spendRows.map((row) => (
+            {!collapsePeople && spendRows.length === 0 && <p className="text-sm text-muted-foreground">Sin datos este mes.</p>}
+            {!collapsePeople && spendRows.map((row) => (
               <div key={row.id} className="flex items-center gap-3">
                 <Avatar className="h-8 w-8">
                   <AvatarImage src={row.avatar_url || undefined} />

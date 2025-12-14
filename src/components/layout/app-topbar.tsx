@@ -134,7 +134,7 @@ export function AppTopbar() {
             <DropdownMenuLabel>Mi Cuenta</DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
-              <a href="/app/dashboard">
+              <a href="/">
                 <Home className="mr-2 h-4 w-4" />
                 Inicio
               </a>

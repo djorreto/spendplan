@@ -176,27 +176,29 @@ export default function SettingsPage() {
       </div>
 
       <Tabs defaultValue="profile">
-        <TabsList className="grid w-full grid-cols-5">
-          <TabsTrigger value="profile">
-            <User className="h-4 w-4 mr-2" />
-            Perfil
-          </TabsTrigger>
-          <TabsTrigger value="household">
-            <Home className="h-4 w-4 mr-2" />
-            Hogar
-          </TabsTrigger>
-          <TabsTrigger value="members">
-            <Users className="h-4 w-4 mr-2" />
-            Miembros
-          </TabsTrigger>
-          <TabsTrigger value="integrations">
-            <Send className="h-4 w-4 mr-2" />
-            Integraciones
-          </TabsTrigger>
-          <TabsTrigger value="debug">
-            Debug
-          </TabsTrigger>
-        </TabsList>
+        <div className="w-full overflow-x-auto pb-1">
+          <TabsList className="flex w-max sm:w-full sm:flex-wrap gap-2 rounded-lg bg-muted/60 p-2">
+            <TabsTrigger value="profile" className="text-sm px-3 py-2 whitespace-nowrap">
+              <User className="h-4 w-4 mr-2" />
+              Perfil
+            </TabsTrigger>
+            <TabsTrigger value="household" className="text-sm px-3 py-2 whitespace-nowrap">
+              <Home className="h-4 w-4 mr-2" />
+              Hogar
+            </TabsTrigger>
+            <TabsTrigger value="members" className="text-sm px-3 py-2 whitespace-nowrap">
+              <Users className="h-4 w-4 mr-2" />
+              Miembros
+            </TabsTrigger>
+            <TabsTrigger value="integrations" className="text-sm px-3 py-2 whitespace-nowrap">
+              <Send className="h-4 w-4 mr-2" />
+              Integraciones
+            </TabsTrigger>
+            <TabsTrigger value="debug" className="text-sm px-3 py-2 whitespace-nowrap">
+              Debug
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
         {/* Profile Tab */}
         <TabsContent value="profile">
