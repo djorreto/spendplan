@@ -34,6 +34,7 @@ export interface Profile {
   phone: string | null
   preferred_currency: string
   onboarding_completed: boolean
+  is_super_admin?: boolean
   created_at: string
   updated_at: string
   telegram_connected?: boolean | null

@@ -19,7 +19,8 @@ import {
   ChevronRight,
   LogOut,
   LucideIcon,
-  PlusCircle
+  PlusCircle,
+  ShieldCheck
 } from 'lucide-react'
 
 interface MenuItem {
@@ -49,7 +50,7 @@ export function AppSidebar({
     return window.innerWidth < 768
   })
   const pathname = usePathname()
-  const { signOut } = useAuth()
+  const { signOut, profile } = useAuth()
 
   const menuItems: MenuItem[] = [
     { icon: LayoutDashboard, label: 'Resumen', href: '/app/dashboard' },
@@ -61,6 +62,7 @@ export function AppSidebar({
   ]
 
   const bottomItems: MenuItem[] = [
+    ...(profile?.is_super_admin ? [{ icon: ShieldCheck, label: 'Super admin', href: '/app/super-admin' }] : []),
     { icon: Settings, label: 'Configuración', href: '/app/settings' },
   ]
 

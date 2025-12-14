@@ -24,7 +24,8 @@ export async function POST(req: NextRequest) {
     })
 
     const hasIncome = Number(totalIncome || 0) > 0
-    const prompt = `Eres un asesor financiero para hogares chilenos. Analiza los gastos del mes ${month}.
+    const prompt = `Eres un asesor financiero para hogares chilenos. Sé breve y concreto (respuestas cortas).
+Analiza los gastos del mes ${month}.
 
 RESUMEN FINANCIERO:
 - Ingresos del mes: $${totalIncome?.toLocaleString('es-CL') || 0} ${hasIncome ? '' : '(no configurados)'}
@@ -35,9 +36,9 @@ ${hasIncome ? `- Balance: $${((totalIncome || 0) - (totalSpent || 0)).toLocaleSt
 GASTOS DEL MES:
 ${expensesSummary || 'Sin gastos registrados'}
 
-Genera un análisis en JSON con este formato exacto:
+Genera un análisis en JSON conciso con este formato exacto:
 {
-  "bullets": ["insight 1 específico con números", "insight 2", "insight 3"],
+  "bullets": ["insight 1 específico con números", "insight 2 (máx 4 bullets)"],
   "flags": [
     {
       "category_name": "nombre categoría",
@@ -46,7 +47,7 @@ Genera un análisis en JSON con este formato exacto:
       "percentage": número
     }
   ],
-  "recommendations": ["recomendación práctica 1", "recomendación 2", "recomendación 3"]
+  "recommendations": ["recomendación práctica 1", "recomendación 2 (máx 3)"]
 }
 
 REGLA IMPORTANTE:
