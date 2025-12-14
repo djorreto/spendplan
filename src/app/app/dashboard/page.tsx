@@ -115,6 +115,8 @@ export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
   const [includeFixedInPeople, setIncludeFixedInPeople] = useState(false)
+  const [collapseRecent, setCollapseRecent] = useState(false)
+  const [collapsePeople, setCollapsePeople] = useState(false)
 
   useEffect(() => {
     if (currentHousehold) {
