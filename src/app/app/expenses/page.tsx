@@ -609,7 +609,7 @@ export default function ExpensesPage() {
                       <p className="font-medium truncate">
                         {expense.merchant || expense.description || 'Gasto'}
                       </p>
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground flex-wrap">
                         <span>{formatDate(expense.expense_date)}</span>
                         <span>·</span>
                         <span>{getPaymentMethodLabel(expense.payment_method)}</span>
