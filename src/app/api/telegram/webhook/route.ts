@@ -1069,6 +1069,18 @@ async function handleVerification(
     await sendTelegramMessage(chatId, '❌ Error al vincular. Intenta de nuevo.')
     return
   }
+
+  // Mark profile as connected (best-effort; does not block linking)
+  const { error: profileUpdateError } = await supabase
+    .from('profiles')
+    .update({
+      telegram_connected: true,
+      telegram_reminder_dismissed_at: null,
+    })
+    .eq('id', pending.user_id)
+  if (profileUpdateError) {
+    console.error('Error marking telegram_connected on profile:', profileUpdateError)
+  }
   
   await sendTelegramMessage(chatId,
     '✅ *¡Cuenta vinculada correctamente!*\n\n' +

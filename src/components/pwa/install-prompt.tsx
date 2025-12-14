@@ -10,6 +10,24 @@ function isStandalone() {
   return window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone
 }
 
+// Supabase stores auth tokens in localStorage with keys like "sb-<ref>-auth-token".
+// We gate the prompt to only show for signed-in users.
+function hasSupabaseSession() {
+  if (typeof window === 'undefined') return false
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i) || ''
+      if (key.includes('sb-') && key.includes('auth-token')) {
+        const raw = localStorage.getItem(key)
+        if (raw && raw.includes('access_token')) return true
+      }
+    }
+  } catch {
+    return false
+  }
+  return false
+}
+
 export default function InstallPrompt() {
   const [visible, setVisible] = useState(false)
   const [isIOS, setIsIOS] = useState(false)
@@ -17,6 +35,7 @@ export default function InstallPrompt() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return
+    if (!hasSupabaseSession()) return
     setIsIOS(/iphone|ipad|ipod/i.test(window.navigator.userAgent))
     const dismissedAt = Number(localStorage.getItem(DISMISS_KEY) || 0)
     if (Date.now() - dismissedAt < HIDE_MS) return
