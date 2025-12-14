@@ -21,7 +21,7 @@ const DEMO_EXPENSES_KEY = 'spendplan_demo_expenses'
 export function AppLayoutClient({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const { user, profile, loading: authLoading, isAuthenticated } = useAuth()
-  const { currentHousehold, isDemoMode, loading: householdLoading, error: householdError, loadHouseholds } = useHousehold()
+  const { currentHousehold, households, isDemoMode, loading: householdLoading, error: householdError, loadHouseholds } = useHousehold()
   const { selectedMonth } = useSelectedMonth(currentHousehold?.id)
   const [copilotOpen, setCopilotOpen] = useState(false)
 
@@ -345,13 +345,13 @@ export function AppLayoutClient({ children }: { children: React.ReactNode }) {
     if (!authLoading && !householdLoading && isAuthenticated) {
       // No decidir onboarding si el profile aún no cargó (evita redirects falsos en refresh)
       if (!profile) return
-      if (profile && !profile.onboarding_completed) {
-        router.push('/onboarding')
-      } else if (!currentHousehold && !householdError) {
+      const hasHousehold = !!currentHousehold || (households?.length || 0) > 0
+      // Solo mandar a onboarding si no tiene hogares y no completó onboarding.
+      if (!hasHousehold && (!profile.onboarding_completed)) {
         router.push('/onboarding')
       }
     }
-  }, [authLoading, householdLoading, isAuthenticated, profile, currentHousehold, householdError, router])
+  }, [authLoading, householdLoading, isAuthenticated, profile, currentHousehold, households, router])
 
   if (authLoading || householdLoading) {
     return <LoadingPage />
