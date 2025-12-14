@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Switch } from '@/components/ui/switch'
@@ -67,7 +68,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import type { Category, Expense } from '@/types'
+import type { Category, Expense, PaymentMethod } from '@/types'
 import { supabaseBrowser } from '@/lib/supabase'
 import { useAuth } from '@/hooks/use-auth'
 import { endOp, formatSupabaseError, logOp, startOp, withRetry } from '@/lib/debug-log'
@@ -434,6 +435,9 @@ export default function BudgetPage() {
   const [expenseForm, setExpenseForm] = useState({
     amount: 0,
     description: '',
+    merchant: '',
+    payment_method: 'unknown' as PaymentMethod,
+    notes: '',
     date: new Date().toISOString().split('T')[0],
   })
   
@@ -532,6 +536,7 @@ export default function BudgetPage() {
             .from('expenses')
             .select('*')
             .eq('household_id', currentHousehold.id)
+            .eq('status', 'confirmed')
             .gte('expense_date', `${currentMonth}-01`)
             .order('expense_date', { ascending: false }),
         { retries: 2, baseDelayMs: 250, ctx: op, step: 'select.expenses' }
@@ -959,43 +964,91 @@ export default function BudgetPage() {
     setExpenseForm({
       amount: 0,
       description: '',
+      merchant: '',
+      payment_method: 'unknown',
+      notes: '',
       date: new Date().toISOString().split('T')[0],
     })
     setExpenseDialogOpen(true)
   }
 
-  const saveQuickExpense = () => {
+  const saveQuickExpense = async () => {
     if (!selectedBudgetItem || !expenseForm.amount || expenseForm.amount <= 0) {
       addToast({ type: 'error', message: 'Ingresa un monto válido' })
       return
     }
 
     const category = categories.find(c => c.id === selectedBudgetItem.category_id)
-    const newExpense: Expense = {
-      id: `exp-${Date.now()}`,
-      household_id: currentHousehold?.id || 'demo',
+    const baseExpense = {
       category_id: selectedBudgetItem.category_id || '',
       amount: expenseForm.amount,
       description: expenseForm.description || `${selectedBudgetItem.name}`,
+      merchant: expenseForm.merchant || null,
       expense_date: expenseForm.date,
-      created_by: 'demo-user',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      payment_method: expenseForm.payment_method || 'unknown',
+      notes: expenseForm.notes || null,
     }
 
-    // Save to localStorage
-    const allExpenses = getDemoExpenses()
-    allExpenses.push(newExpense)
-    localStorage.setItem(DEMO_EXPENSES_KEY, JSON.stringify(allExpenses))
+    if (isDemo) {
+      const newExpense: Expense = {
+        id: `exp-${Date.now()}`,
+        household_id: currentHousehold?.id || 'demo',
+        ...baseExpense,
+        source: 'manual',
+        status: 'confirmed',
+        is_unbudgeted: false as any,
+        ai_category_suggestion: null as any,
+        ai_confidence: 0 as any,
+        ai_reason: null as any,
+        account: null as any,
+        tags: null as any,
+        created_by: 'demo-user',
+        updated_by: 'demo-user',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }
 
-    // Update local state
-    if (newExpense.expense_date.startsWith(currentMonth)) {
-      setExpenses([...expenses, newExpense])
+      const allExpenses = getDemoExpenses()
+      allExpenses.push(newExpense)
+      localStorage.setItem(DEMO_EXPENSES_KEY, JSON.stringify(allExpenses))
+
+      if (newExpense.expense_date.startsWith(currentMonth)) {
+        setExpenses([...expenses, newExpense])
+      }
+    } else if (currentHousehold && profile) {
+      const supabase = supabaseBrowser()
+      const { data, error } = await supabase
+        .from('expenses')
+        .insert({
+          household_id: currentHousehold.id,
+          category_id: baseExpense.category_id,
+          amount: baseExpense.amount,
+          description: baseExpense.description,
+          merchant: baseExpense.merchant,
+          expense_date: baseExpense.expense_date,
+          payment_method: baseExpense.payment_method,
+          notes: baseExpense.notes,
+          status: 'confirmed',
+          source: 'manual',
+          is_unbudgeted: false,
+          created_by: profile.id,
+          updated_by: profile.id,
+        })
+        .select('*')
+        .single()
+
+      if (error) {
+        addToast({ type: 'error', message: 'Error al registrar gasto' })
+        return
+      }
+
+      setExpenses([...expenses, data as any])
+      setAllExpenses([...allExpenses, data as any])
     }
 
-    addToast({ 
-      type: 'success', 
-      message: `Gasto de ${formatCurrency(expenseForm.amount, currentHousehold?.currency)} registrado en ${category?.name || selectedBudgetItem.name}` 
+    addToast({
+      type: 'success',
+      message: `Gasto de ${formatCurrency(expenseForm.amount, currentHousehold?.currency)} registrado en ${category?.name || selectedBudgetItem.name}`,
     })
     setExpenseDialogOpen(false)
   }
@@ -2418,6 +2471,44 @@ export default function BudgetPage() {
                 />
               </div>
 
+              <div className="space-y-2">
+                <Label>Comercio (opcional)</Label>
+                <Input
+                  placeholder="Ej: Jumbo, Líder, Pizzería..."
+                  value={expenseForm.merchant}
+                  onChange={(e) => setExpenseForm({ ...expenseForm, merchant: e.target.value })}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Método de pago</Label>
+                <Select
+                  value={expenseForm.payment_method}
+                  onValueChange={(v) => setExpenseForm({ ...expenseForm, payment_method: v as PaymentMethod })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecciona método" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cash">Efectivo</SelectItem>
+                    <SelectItem value="debit">Débito</SelectItem>
+                    <SelectItem value="credit">Crédito</SelectItem>
+                    <SelectItem value="transfer">Transferencia</SelectItem>
+                    <SelectItem value="unknown">Otro / No especifica</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Notas (opcional)</Label>
+                <Textarea
+                  rows={3}
+                  placeholder="Contexto extra, referencia o comprobante"
+                  value={expenseForm.notes}
+                  onChange={(e) => setExpenseForm({ ...expenseForm, notes: e.target.value })}
+                />
+              </div>
+
               {/* Warning if over budget */}
               {expenseForm.amount > 0 && (
                 getSpentForCategory(selectedBudgetItem.category_id) + expenseForm.amount > getMonthlyAmount(selectedBudgetItem)
@@ -2488,7 +2579,7 @@ function ItemList({
         return (
           <div 
             key={item.id} 
-            className={`flex items-center gap-3 p-3 rounded-lg transition-colors group ${
+            className={`flex flex-col sm:flex-row sm:items-center gap-3 p-3 rounded-lg transition-colors group ${
               item.is_active 
                 ? 'bg-muted/50 hover:bg-muted' 
                 : 'bg-muted/20 opacity-60'
@@ -2506,7 +2597,7 @@ function ItemList({
             )}
             
             {/* Content */}
-            <div className="flex-1 min-w-0">
+            <div className="flex-1 min-w-0 space-y-1">
               <div className="flex items-center gap-2">
                 <p className={`font-medium truncate ${!item.is_active ? 'line-through' : ''}`}>{item.name}</p>
                 {item.is_installment && item.total_installments && (
@@ -2518,7 +2609,7 @@ function ItemList({
                   <Badge variant="outline" className="text-xs">Inactivo</Badge>
                 )}
               </div>
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
                 {item.is_installment ? (
                   <>
                     <span>💳 {item.total_installments} cuotas</span>
@@ -2568,9 +2659,9 @@ function ItemList({
             </div>
             
             {/* Amount */}
-            <div className="text-right">
+            <div className="sm:text-right text-left w-full sm:w-auto">
               {showSpent && item.is_active ? (
-                <p className="text-sm">
+                <p className="text-sm tabular-nums">
                   <span className={percentage > 100 ? 'text-destructive font-semibold' : 'font-medium'}>
                     {formatCurrency(spent, currency)}
                   </span>
@@ -2588,14 +2679,16 @@ function ItemList({
             
             {/* Quick register expense button for variable expenses */}
             {showSpent && item.is_active && onRegisterExpense && (
-              <Button 
-                size="sm" 
-                variant="outline"
-                className="h-8 text-xs border-amber-300 text-amber-700 hover:bg-amber-50"
-                onClick={() => onRegisterExpense(item)}
-              >
-                <Plus className="mr-1 h-3 w-3" /> Gasto
-              </Button>
+              <div className="sm:ml-2">
+                <Button 
+                  size="sm" 
+                  variant="outline"
+                  className="h-8 text-xs border-amber-300 text-amber-700 hover:bg-amber-50 w-full sm:w-auto"
+                  onClick={() => onRegisterExpense(item)}
+                >
+                  <Plus className="mr-1 h-3 w-3" /> Gasto
+                </Button>
+              </div>
             )}
             
             {/* Actions */}
