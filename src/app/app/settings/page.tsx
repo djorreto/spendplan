@@ -38,7 +38,7 @@ import {
 
 export default function SettingsPage() {
   const { profile, updateProfile } = useAuth()
-  const { currentHousehold, members, invitations, updateHousehold, inviteMember, revokeInvitation, isOwner } = useHousehold()
+  const { currentHousehold, members, invitations, updateHousehold, inviteMember, revokeInvitation, isOwner, deleteHousehold, leaveHousehold } = useHousehold()
   const { addToast } = useToast()
 
   // Profile state
@@ -65,6 +65,9 @@ export default function SettingsPage() {
   const [telegramCode, setTelegramCode] = useState<string | null>(null)
   const [generatingCode, setGeneratingCode] = useState(false)
   const [codeCopied, setCodeCopied] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [leaving, setLeaving] = useState(false)
+  const [confirmText, setConfirmText] = useState('')
 
   useEffect(() => {
     if (profile) {
@@ -301,14 +304,67 @@ export default function SettingsPage() {
                 </div>
               </div>
             </CardContent>
-            {isOwner && (
-              <CardFooter>
-                <Button onClick={handleSaveHousehold} disabled={savingHousehold}>
-                  <Save className="mr-2 h-4 w-4" />
-                  {savingHousehold ? 'Guardando...' : 'Guardar Cambios'}
-                </Button>
-              </CardFooter>
-            )}
+            <CardFooter className="flex flex-col sm:flex-row gap-3 sm:justify-between sm:items-center">
+              {isOwner ? (
+                <>
+                  <Button onClick={handleSaveHousehold} disabled={savingHousehold}>
+                    <Save className="mr-2 h-4 w-4" />
+                    {savingHousehold ? 'Guardando...' : 'Guardar Cambios'}
+                  </Button>
+                  <div className="flex-1" />
+                  <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+                    <Label className="text-sm text-muted-foreground">Escribe <strong>ELIMINAR</strong> para confirmar</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        className="w-32"
+                        value={confirmText}
+                        onChange={(e) => setConfirmText(e.target.value)}
+                        placeholder="ELIMINAR"
+                      />
+                      <Button
+                        variant="destructive"
+                        disabled={deleting || confirmText !== 'ELIMINAR'}
+                        onClick={async () => {
+                          if (!currentHousehold) return
+                          setDeleting(true)
+                          const res = await deleteHousehold(currentHousehold.id)
+                          setDeleting(false)
+                          if (res.error) {
+                            addToast({ type: 'error', message: res.error })
+                          } else {
+                            addToast({ type: 'success', message: 'Hogar eliminado' })
+                          }
+                        }}
+                      >
+                        {deleting ? 'Eliminando...' : 'Eliminar hogar'}
+                      </Button>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full">
+                  <p className="text-sm text-muted-foreground">Puedes abandonar este hogar.</p>
+                  <Button
+                    variant="destructive"
+                    className="w-full sm:w-auto"
+                    disabled={leaving}
+                    onClick={async () => {
+                      if (!currentHousehold) return
+                      setLeaving(true)
+                      const res = await leaveHousehold(currentHousehold.id)
+                      setLeaving(false)
+                      if (res.error) {
+                        addToast({ type: 'error', message: res.error })
+                      } else {
+                        addToast({ type: 'success', message: 'Saliste del hogar' })
+                      }
+                    }}
+                  >
+                    {leaving ? 'Saliendo...' : 'Abandonar hogar'}
+                  </Button>
+                </div>
+              )}
+            </CardFooter>
           </Card>
         </TabsContent>
 

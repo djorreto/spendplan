@@ -336,6 +336,57 @@ export function useHousehold() {
     }
   }, [supabase, loadHouseholds, setCurrentHousehold])
 
+  const deleteHousehold = useCallback(
+    async (householdId: string) => {
+      try {
+        const { error } = await supabase.from('households').delete().eq('id', householdId)
+        if (error) {
+          console.error('Error deleting household:', error)
+          return { error: error.message }
+        }
+        await loadHouseholds(true)
+        // Reset current household if it was deleted
+        if (globalHouseholdState.currentHousehold?.id === householdId) {
+          const next = globalHouseholdState.households[0] || null
+          setState((prev) => ({ ...prev, currentHousehold: next }))
+        }
+        return { error: null }
+      } catch (err) {
+        console.error('Exception deleting household:', err)
+        return { error: 'Error al eliminar el hogar' }
+      }
+    },
+    [supabase, loadHouseholds]
+  )
+
+  const leaveHousehold = useCallback(
+    async (householdId: string, userId?: string) => {
+      try {
+        const uid = userId
+          || (await supabase.auth.getUser()).data.user?.id
+        if (!uid) return { error: 'No autenticado' }
+
+        const { error } = await supabase
+          .from('household_memberships')
+          .update({ is_active: false })
+          .eq('household_id', householdId)
+          .eq('user_id', uid)
+
+        if (error) {
+          console.error('Error leaving household:', error)
+          return { error: error.message }
+        }
+
+        await loadHouseholds(true)
+        return { error: null }
+      } catch (err) {
+        console.error('Exception leaving household:', err)
+        return { error: 'Error al salir del hogar' }
+      }
+    },
+    [supabase, loadHouseholds]
+  )
+
   // Actualizar hogar
   const updateHousehold = useCallback(async (
     id: string,
@@ -481,6 +532,8 @@ export function useHousehold() {
     loadHouseholds,
     setCurrentHousehold,
     createHousehold,
+    deleteHousehold,
+    leaveHousehold,
     updateHousehold,
     inviteMember,
     acceptInvitation,

@@ -7,6 +7,16 @@ import { useSelectedMonth } from '@/hooks/use-selected-month'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+  DialogClose,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -34,8 +44,13 @@ import {
 export function AppTopbar() {
   const router = useRouter()
   const { profile, signOut } = useAuth()
-  const { households, currentHousehold, setCurrentHousehold } = useHousehold()
+  const { households, currentHousehold, setCurrentHousehold, createHousehold } = useHousehold()
   const { selectedMonth, setSelectedMonth } = useSelectedMonth(currentHousehold?.id)
+  const [creating, setCreating] = useState(false)
+  const [newHomeOpen, setNewHomeOpen] = useState(false)
+  const [newHomeName, setNewHomeName] = useState('')
+  const [newHomeCurrency, setNewHomeCurrency] = useState('CLP')
+  const [newHomeTz, setNewHomeTz] = useState('America/Santiago')
 
   // Generate last 6 months for selector
   const months = Array.from({ length: 6 }, (_, i) => {
@@ -50,12 +65,17 @@ export function AppTopbar() {
   }
 
   return (
+    <>
     <header className="sticky top-0 z-40 flex h-14 sm:h-16 items-center gap-3 sm:gap-4 border-b bg-background px-3 sm:px-6">
       {/* Household Selector */}
       {households.length > 1 && (
         <Select
           value={currentHousehold?.id}
           onValueChange={(id) => {
+            if (id === 'create-new') {
+              setNewHomeOpen(true)
+              return
+            }
             const h = households.find(h => h.id === id)
             if (h) setCurrentHousehold(h)
           }}
@@ -68,6 +88,7 @@ export function AppTopbar() {
             {households.map(h => (
               <SelectItem key={h.id} value={h.id}>{h.name}</SelectItem>
             ))}
+            <SelectItem value="create-new">+ Crear nuevo hogar</SelectItem>
           </SelectContent>
         </Select>
       )}
@@ -146,6 +167,62 @@ export function AppTopbar() {
         </DropdownMenu>
       </div>
     </header>
+    <Dialog open={newHomeOpen} onOpenChange={setNewHomeOpen}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Crear nuevo hogar</DialogTitle>
+          <DialogDescription>Configura un nombre, moneda y zona horaria.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3 pt-2">
+          <div className="space-y-1">
+            <label className="text-sm font-medium">Nombre</label>
+            <Input
+              value={newHomeName}
+              onChange={(e) => setNewHomeName(e.target.value)}
+              placeholder="Ej: Familia Pérez"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-sm font-medium">Moneda</label>
+            <Input
+              value={newHomeCurrency}
+              onChange={(e) => setNewHomeCurrency(e.target.value || 'CLP')}
+              placeholder="CLP"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-sm font-medium">Zona horaria</label>
+            <Input
+              value={newHomeTz}
+              onChange={(e) => setNewHomeTz(e.target.value || 'America/Santiago')}
+              placeholder="America/Santiago"
+            />
+          </div>
+        </div>
+        <DialogFooter className="mt-4">
+          <DialogClose asChild>
+            <Button variant="outline">Cancelar</Button>
+          </DialogClose>
+          <Button
+            onClick={async () => {
+              if (!newHomeName.trim()) return
+              setCreating(true)
+              const { household, error } = await createHousehold(newHomeName.trim(), newHomeCurrency.trim(), newHomeTz.trim())
+              setCreating(false)
+              if (!error && household) {
+                setCurrentHousehold(household as any)
+                setNewHomeOpen(false)
+                setNewHomeName('')
+              }
+            }}
+            disabled={creating || !newHomeName.trim()}
+          >
+            {creating ? 'Creando...' : 'Crear hogar'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   )
 }
 
