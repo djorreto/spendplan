@@ -447,6 +447,9 @@ export default function BudgetPage() {
   
   // All expenses (for charts - last 12 months)
   const [allExpenses, setAllExpenses] = useState<Expense[]>([])
+  const [tableMonths, setTableMonths] = useState<6 | 12>(6)
+  const [tableAnchorMonth, setTableAnchorMonth] = useState(getCurrentMonth())
+  const [tableExpenses, setTableExpenses] = useState<Expense[]>([])
   
   // Chart filter states
   const [chartMonthsFilter, setChartMonthsFilter] = useState(12) // Last N months
@@ -1049,97 +1052,94 @@ export default function BudgetPage() {
       </div>
 
       {/* Summary Cards - Formula Style (Clickable) */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 p-3 bg-muted/30 rounded-xl">
-        {/* Ingresos */}
-        <Card 
-          className="border-green-200 bg-green-50/50 cursor-pointer hover:border-green-400 hover:shadow-sm transition-all"
-          onClick={() => setActiveTab('income')}
-        >
-          <CardContent className="p-3 text-center space-y-1">
-            <p className="text-xs text-green-600 font-medium">Ingresos</p>
-            <p className="text-base lg:text-lg font-bold text-green-600">
-              {formatCurrency(totalIncome, currentHousehold?.currency)}
-            </p>
-          </CardContent>
-        </Card>
+      <div className="space-y-3 p-3 bg-muted/30 rounded-xl">
+        {/* Fila 1: Ingresos - Fijos */}
+        <div className="flex flex-col sm:flex-row sm:items-stretch gap-3">
+          <Card 
+            className="flex-1 border-green-200 bg-green-50/60 cursor-pointer hover:border-green-400 hover:shadow-sm transition-all"
+            onClick={() => setActiveTab('income')}
+          >
+            <CardContent className="p-3 text-center space-y-1">
+              <p className="text-xs text-green-700 font-medium">Ingresos</p>
+              <p className="text-base lg:text-lg font-bold text-green-700">
+                {formatCurrency(totalIncome, currentHousehold?.currency)}
+              </p>
+            </CardContent>
+          </Card>
+          <div className="flex sm:w-10 items-center justify-center text-xl font-bold text-muted-foreground">−</div>
+          <Card 
+            className="flex-1 border-blue-200 bg-blue-50/60 cursor-pointer hover:border-blue-400 hover:shadow-sm transition-all"
+            onClick={() => setActiveTab('fixed')}
+          >
+            <CardContent className="p-3 text-center space-y-1">
+              <p className="text-xs text-blue-700 font-medium">Fijos</p>
+              <p className="text-base lg:text-lg font-bold text-blue-700">
+                {formatCurrency(totalFixed, currentHousehold?.currency)}
+              </p>
+            </CardContent>
+          </Card>
+        </div>
 
-        <span className="flex items-center justify-center text-xl font-bold text-muted-foreground">−</span>
+        {/* Fila 2: Variables - No Presupuestados */}
+        <div className="flex flex-col sm:flex-row sm:items-stretch gap-3">
+          <Card 
+            className={`flex-1 cursor-pointer hover:shadow-sm transition-all ${
+              totalVariableSpent > totalVariableBudget ? 'border-amber-400 bg-amber-50' : 'border-amber-200 bg-amber-50/70'
+            }`}
+            onClick={() => setActiveTab('variable')}
+          >
+            <CardContent className="p-3 text-center space-y-1">
+              <p className="text-xs text-amber-700 font-medium">Variables</p>
+              <p className="text-base lg:text-lg font-bold text-amber-700">
+                {formatCurrency(totalVariableSpent, currentHousehold?.currency)}
+              </p>
+              <p className="text-[11px] text-muted-foreground leading-tight">
+                de {formatCurrency(totalVariableBudget, currentHousehold?.currency)}
+              </p>
+            </CardContent>
+          </Card>
+          <div className="flex sm:w-10 items-center justify-center text-xl font-bold text-muted-foreground">−</div>
+          <Card 
+            className="flex-1 border-red-300 bg-red-50/80 cursor-pointer hover:border-red-500 hover:shadow-sm transition-all"
+            onClick={() => setActiveTab('unbudgeted')}
+          >
+            <CardContent className="p-3 text-center space-y-1">
+              <p className="text-xs text-red-700 font-medium">No Presup.</p>
+              <p className="text-base lg:text-lg font-bold text-red-700">
+                {formatCurrency(totalUnbudgeted, currentHousehold?.currency)}
+              </p>
+              <p className="text-[11px] text-red-600">{unbudgetedExpenses.length} gasto(s)</p>
+            </CardContent>
+          </Card>
+        </div>
 
-        {/* Gastos Fijos */}
-        <Card 
-          className="border-blue-200 bg-blue-50/50 cursor-pointer hover:border-blue-400 hover:shadow-sm transition-all"
-          onClick={() => setActiveTab('fixed')}
-        >
-          <CardContent className="p-3 text-center space-y-1">
-            <p className="text-xs text-blue-600 font-medium">Fijos</p>
-            <p className="text-base lg:text-lg font-bold text-blue-700">
-              {formatCurrency(totalFixed, currentHousehold?.currency)}
-            </p>
-          </CardContent>
-        </Card>
-
-        <span className="flex items-center justify-center text-xl font-bold text-muted-foreground">−</span>
-
-        {/* Gastos Variables */}
-        <Card 
-          className={`cursor-pointer hover:shadow-sm transition-all ${
-            totalVariableSpent > totalVariableBudget ? 'border-amber-400 bg-amber-50 hover:border-amber-500' : 'border-amber-200 bg-amber-50/50 hover:border-amber-400'
-          }`}
-          onClick={() => setActiveTab('variable')}
-        >
-          <CardContent className="p-3 text-center space-y-1">
-            <p className="text-xs text-amber-600 font-medium">Variables</p>
-            <p className="text-base lg:text-lg font-bold text-amber-700">
-              {formatCurrency(totalVariableSpent, currentHousehold?.currency)}
-            </p>
-            <p className="text-[10px] text-muted-foreground leading-tight">
-              de {formatCurrency(totalVariableBudget, currentHousehold?.currency)}
-            </p>
-          </CardContent>
-        </Card>
-
-        <span className="flex items-center justify-center text-xl font-bold text-muted-foreground">−</span>
-
-        {/* No Presupuestados */}
-        <Card 
-          className="border-red-300 bg-red-50 cursor-pointer hover:border-red-500 hover:shadow-sm transition-all"
-          onClick={() => setActiveTab('unbudgeted')}
-        >
-          <CardContent className="p-3 text-center space-y-1">
-            <p className="text-xs text-red-600 font-medium">No Presup.</p>
-            <p className="text-base lg:text-lg font-bold text-red-600">
-              {formatCurrency(totalUnbudgeted, currentHousehold?.currency)}
-            </p>
-            <p className="text-[10px] text-red-500">{unbudgetedExpenses.length} gasto(s)</p>
-          </CardContent>
-        </Card>
-
-        <span className="flex items-center justify-center text-xl font-bold text-muted-foreground">=</span>
-
-        {/* Disponible Real */}
-        <Card 
-          className={`border-2 cursor-pointer hover:shadow-sm transition-all ${
-            availableReal < 0 
-              ? 'border-red-500 bg-red-100 hover:border-red-600' 
-              : isWithinBudget 
-              ? 'border-green-500 bg-green-100 hover:border-green-600' 
-              : 'border-amber-500 bg-amber-100 hover:border-amber-600'
-          }`}
-          onClick={() => setActiveTab('balance')}
-        >
-          <CardContent className="p-3 text-center space-y-1">
-            <p className={`text-xs font-medium ${
-              availableReal < 0 ? 'text-red-600' : isWithinBudget ? 'text-green-600' : 'text-amber-600'
-            }`}>
-              {availableReal < 0 ? '⚠️' : '✓'} Balance
-            </p>
-            <p className={`text-lg lg:text-xl font-bold ${
-              availableReal < 0 ? 'text-red-700' : isWithinBudget ? 'text-green-700' : 'text-amber-700'
-            }`}>
-              {formatCurrency(availableReal, currentHousehold?.currency)}
-            </p>
-          </CardContent>
-        </Card>
+        {/* Fila 3: Balance */}
+        <div className="flex flex-col sm:flex-row sm:items-stretch gap-3">
+          <div className="flex sm:w-10 items-center justify-center text-xl font-bold text-muted-foreground">=</div>
+          <Card 
+            className={`flex-1 border-2 cursor-pointer hover:shadow-sm transition-all ${
+              availableReal < 0 
+                ? 'border-red-500 bg-red-100' 
+                : isWithinBudget 
+                ? 'border-green-500 bg-green-100' 
+                : 'border-amber-500 bg-amber-100'
+            }`}
+            onClick={() => setActiveTab('balance')}
+          >
+            <CardContent className="p-3 text-center space-y-1">
+              <p className={`text-xs font-medium ${
+                availableReal < 0 ? 'text-red-600' : isWithinBudget ? 'text-green-600' : 'text-amber-600'
+              }`}>
+                {availableReal < 0 ? '⚠️ Balance' : 'Balance'}
+              </p>
+              <p className={`text-lg lg:text-xl font-bold ${
+                availableReal < 0 ? 'text-red-700' : isWithinBudget ? 'text-green-700' : 'text-amber-700'
+              }`}>
+                {formatCurrency(availableReal, currentHousehold?.currency)}
+              </p>
+            </CardContent>
+          </Card>
+        </div>
       </div>
 
       {/* Main Content */}
