@@ -488,7 +488,7 @@ export default function SettingsPage() {
         {/* Integrations Tab */}
         <TabsContent value="integrations" className="space-y-6">
           {/* Telegram */}
-          <Card>
+          <Card id="telegram">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Send className="h-5 w-5" />

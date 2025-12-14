@@ -27,6 +27,7 @@ import {
   Wallet,
   Sparkles
 } from 'lucide-react'
+import { TelegramReminder } from '@/components/telegram/telegram-reminder'
 
 // Demo mode constants (must match budget/page.tsx)
 const DEMO_BUDGET_KEY = 'spendplan_demo_budget_v2'
@@ -511,6 +512,7 @@ export default function DashboardPage() {
 
   return (
     <div className="max-w-2xl mx-auto px-3 sm:px-0 space-y-3 sm:space-y-6 pb-6">
+      <TelegramReminder profile={profile} />
       <div className="flex items-start justify-between gap-2">
         <div className="space-y-0.5">
           <h1 className="text-xl sm:text-2xl font-bold">¿Cómo va el mes?</h1>

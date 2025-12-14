@@ -36,6 +36,8 @@ export interface Profile {
   onboarding_completed: boolean
   created_at: string
   updated_at: string
+  telegram_connected?: boolean | null
+  telegram_reminder_dismissed_at?: string | null
 }
 
 // ========================================
