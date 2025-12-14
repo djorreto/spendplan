@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useMemo } from 'react'
+import { useRouter, usePathname } from 'next/navigation'
 import { useAuth } from '@/hooks/use-auth'
 import { useHousehold } from '@/hooks/use-household'
 import { useSelectedMonth } from '@/hooks/use-selected-month'
@@ -39,11 +39,27 @@ import {
   LogOut,
   ChevronDown,
   Home,
-  Calendar
+  Calendar,
+  Menu
 } from 'lucide-react'
 
-export function AppTopbar() {
+type AppTopbarProps = {
+  onToggleSidebar?: () => void
+}
+
+const SECTION_LABELS: Array<{ href: string; label: string }> = [
+  { href: '/app/dashboard', label: 'Resumen' },
+  { href: '/app/budget', label: 'Presupuesto' },
+  { href: '/app/expenses', label: 'Gastos' },
+  { href: '/app/classify', label: 'Clasificar' },
+  { href: '/app/export-import', label: 'Exportar e importar' },
+  { href: '/app/insights', label: 'Insights' },
+  { href: '/app/settings', label: 'Configuración' },
+]
+
+export function AppTopbar({ onToggleSidebar }: AppTopbarProps) {
   const router = useRouter()
+  const pathname = usePathname()
   const { profile, signOut } = useAuth()
   const { households, currentHousehold, setCurrentHousehold, createHousehold } = useHousehold()
   const { selectedMonth, setSelectedMonth } = useSelectedMonth(currentHousehold?.id)
@@ -52,6 +68,11 @@ export function AppTopbar() {
   const [newHomeName, setNewHomeName] = useState('')
   const [newHomeCurrency, setNewHomeCurrency] = useState('CLP')
   const [newHomeTz, setNewHomeTz] = useState('America/Santiago')
+
+  const currentSection = useMemo(() => {
+    const found = SECTION_LABELS.find((s) => pathname === s.href || pathname?.startsWith(`${s.href}/`))
+    return found?.label || 'Menú'
+  }, [pathname])
 
   // Generate last 6 months for selector
   const months = Array.from({ length: 6 }, (_, i) => {
@@ -68,6 +89,14 @@ export function AppTopbar() {
   return (
     <>
     <header className="sticky top-0 z-40 flex h-14 sm:h-16 items-center gap-3 sm:gap-4 border-b bg-background px-3 sm:px-6">
+      {/* Mobile menu toggle */}
+      <div className="flex items-center gap-2 md:hidden">
+        <Button variant="ghost" size="icon" className="h-9 w-9" onClick={onToggleSidebar}>
+          <Menu className="h-5 w-5" />
+        </Button>
+        <span className="text-sm font-semibold truncate max-w-[160px]">{currentSection}</span>
+      </div>
+
       {/* Household Selector (siempre visible para crear/cambiar) */}
       {households.length > 0 && (
         <Select

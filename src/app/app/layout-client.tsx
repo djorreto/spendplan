@@ -24,6 +24,7 @@ export function AppLayoutClient({ children }: { children: React.ReactNode }) {
   const { currentHousehold, households, isDemoMode, loading: householdLoading, error: householdError, loadHouseholds } = useHousehold()
   const { selectedMonth } = useSelectedMonth(currentHousehold?.id)
   const [copilotOpen, setCopilotOpen] = useState(false)
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
 
   const isDemo = isDemoMode && !!currentHousehold?.id?.startsWith('demo-')
 
@@ -374,18 +375,38 @@ export function AppLayoutClient({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen h-[100dvh] overflow-hidden bg-muted/30">
       {/* Sidebar */}
-      <AppSidebar />
+      <div className="hidden md:flex">
+        <AppSidebar initialCollapsed={false} />
+      </div>
 
       {/* Main content */}
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Topbar */}
-        <AppTopbar />
+        <AppTopbar onToggleSidebar={() => setMobileSidebarOpen(true)} />
 
         {/* Page content */}
         <main className="flex-1 overflow-y-auto p-4 md:p-6">
           {children}
         </main>
       </div>
+
+      {/* Mobile sidebar overlay */}
+      {mobileSidebarOpen && (
+        <div className="fixed inset-0 z-50 md:hidden">
+          <div
+            className="absolute inset-0 bg-black/40"
+            onClick={() => setMobileSidebarOpen(false)}
+          />
+          <div className="absolute inset-y-0 left-0 w-64 max-w-[80%] shadow-xl">
+            <AppSidebar
+              initialCollapsed={false}
+              hideCollapseToggle
+              onNavigate={() => setMobileSidebarOpen(false)}
+              className="h-full"
+            />
+          </div>
+        </div>
+      )}
 
       {/* Copilot */}
       <CopilotButton onClick={() => setCopilotOpen(true)} />

@@ -29,9 +29,22 @@ interface MenuItem {
   badge?: number
 }
 
-export function AppSidebar() {
+type SidebarProps = {
+  initialCollapsed?: boolean
+  onNavigate?: () => void
+  hideCollapseToggle?: boolean
+  className?: string
+}
+
+export function AppSidebar({
+  initialCollapsed,
+  onNavigate,
+  hideCollapseToggle = false,
+  className,
+}: SidebarProps) {
   // En móvil partimos colapsado para evitar layouts apretados
   const [isCollapsed, setIsCollapsed] = useState(() => {
+    if (initialCollapsed !== undefined) return initialCollapsed
     if (typeof window === 'undefined') return false
     return window.innerWidth < 768
   })
@@ -53,13 +66,14 @@ export function AppSidebar() {
 
   const handleLogout = async () => {
     await signOut()
+    onNavigate?.()
   }
 
   return (
     <aside className={cn(
       'flex flex-col bg-sidebar text-sidebar-foreground transition-all duration-300',
       isCollapsed ? 'w-16' : 'w-64'
-    )}>
+    , className)}>
       {/* Header */}
       <div className={cn(
         'flex items-center h-16 px-4 border-b border-white/10',
@@ -91,6 +105,7 @@ export function AppSidebar() {
               'w-full bg-sidebar-accent hover:bg-sidebar-accent/90 text-white',
               isCollapsed ? 'px-2' : ''
             )}
+            onClick={onNavigate}
           >
             <PlusCircle className="h-4 w-4" />
             {!isCollapsed && <span className="ml-2">Nuevo Gasto</span>}
@@ -115,6 +130,7 @@ export function AppSidebar() {
                   : 'text-sidebar-foreground/70 hover:bg-white/10 hover:text-sidebar-foreground',
                 isCollapsed && 'justify-center px-2'
               )}
+              onClick={onNavigate}
               title={isCollapsed ? item.label : undefined}
             >
               <Icon className="h-5 w-5 flex-shrink-0" />
@@ -150,6 +166,7 @@ export function AppSidebar() {
                   : 'text-sidebar-foreground/70 hover:bg-white/10 hover:text-sidebar-foreground',
                 isCollapsed && 'justify-center px-2'
               )}
+              onClick={onNavigate}
               title={isCollapsed ? item.label : undefined}
             >
               <Icon className="h-5 w-5 flex-shrink-0" />
@@ -171,7 +188,7 @@ export function AppSidebar() {
         </button>
 
         {/* Collapse toggle */}
-        {isCollapsed && (
+        {isCollapsed && !hideCollapseToggle && (
           <Button
             variant="ghost"
             size="icon"
