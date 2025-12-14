@@ -1062,84 +1062,68 @@ export default function BudgetPage() {
       </div>
 
       {/* Summary Cards - Formula Style (Clickable) */}
-      <div className="flex flex-wrap items-center justify-center gap-2 lg:gap-3 p-4 bg-muted/30 rounded-xl">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 p-3 bg-muted/30 rounded-xl">
         {/* Ingresos */}
         <Card 
-          className="border-green-200 bg-green-50/50 flex-1 min-w-[140px] max-w-[200px] cursor-pointer hover:border-green-400 hover:shadow-md transition-all"
+          className="border-green-200 bg-green-50/50 cursor-pointer hover:border-green-400 hover:shadow-sm transition-all"
           onClick={() => setActiveTab('income')}
         >
-          <CardContent className="p-3 text-center">
-            <p className="text-xs text-green-600 font-medium mb-1">Ingresos</p>
-            <p className="text-lg lg:text-xl font-bold text-green-600">
+          <CardContent className="p-3 text-center space-y-1">
+            <p className="text-xs text-green-600 font-medium">Ingresos</p>
+            <p className="text-base lg:text-lg font-bold text-green-600">
               {formatCurrency(totalIncome, currentHousehold?.currency)}
             </p>
           </CardContent>
         </Card>
 
-        {/* Minus sign */}
-        <span className="text-2xl font-bold text-muted-foreground">−</span>
-
         {/* Gastos Fijos */}
         <Card 
-          className="border-blue-200 bg-blue-50/50 flex-1 min-w-[140px] max-w-[200px] cursor-pointer hover:border-blue-400 hover:shadow-md transition-all"
+          className="border-blue-200 bg-blue-50/50 cursor-pointer hover:border-blue-400 hover:shadow-sm transition-all"
           onClick={() => setActiveTab('fixed')}
         >
-          <CardContent className="p-3 text-center">
-            <p className="text-xs text-blue-600 font-medium mb-1">Fijos</p>
-            <p className="text-lg lg:text-xl font-bold text-blue-700">
+          <CardContent className="p-3 text-center space-y-1">
+            <p className="text-xs text-blue-600 font-medium">Fijos</p>
+            <p className="text-base lg:text-lg font-bold text-blue-700">
               {formatCurrency(totalFixed, currentHousehold?.currency)}
             </p>
           </CardContent>
         </Card>
 
-        {/* Minus sign */}
-        <span className="text-2xl font-bold text-muted-foreground">−</span>
-
         {/* Gastos Variables */}
         <Card 
-          className={`flex-1 min-w-[140px] max-w-[200px] cursor-pointer hover:shadow-md transition-all ${
+          className={`cursor-pointer hover:shadow-sm transition-all ${
             totalVariableSpent > totalVariableBudget ? 'border-amber-400 bg-amber-50 hover:border-amber-500' : 'border-amber-200 bg-amber-50/50 hover:border-amber-400'
           }`}
           onClick={() => setActiveTab('variable')}
         >
-          <CardContent className="p-3 text-center">
-            <p className="text-xs text-amber-600 font-medium mb-1">Variables</p>
-            <p className="text-lg lg:text-xl font-bold text-amber-700">
+          <CardContent className="p-3 text-center space-y-1">
+            <p className="text-xs text-amber-600 font-medium">Variables</p>
+            <p className="text-base lg:text-lg font-bold text-amber-700">
               {formatCurrency(totalVariableSpent, currentHousehold?.currency)}
             </p>
-            <p className="text-[10px] text-muted-foreground">
+            <p className="text-[10px] text-muted-foreground leading-tight">
               de {formatCurrency(totalVariableBudget, currentHousehold?.currency)}
             </p>
           </CardContent>
         </Card>
 
-        {/* Minus sign - only if there are unbudgeted */}
-        {totalUnbudgeted > 0 && (
-          <>
-            <span className="text-2xl font-bold text-muted-foreground">−</span>
-            
-            {/* No Presupuestados */}
-            <Card 
-              className="border-red-300 bg-red-50 flex-1 min-w-[140px] max-w-[200px] cursor-pointer hover:border-red-500 hover:shadow-md transition-all"
-              onClick={() => setActiveTab('unbudgeted')}
-            >
-              <CardContent className="p-3 text-center">
-                <p className="text-xs text-red-600 font-medium mb-1">No Presup.</p>
-                <p className="text-lg lg:text-xl font-bold text-red-600">
-                  {formatCurrency(totalUnbudgeted, currentHousehold?.currency)}
-                </p>
-                <p className="text-[10px] text-red-500">{unbudgetedExpenses.length} gasto(s)</p>
-              </CardContent>
-            </Card>
-          </>
-        )}
-
-        {/* Equals sign */}
-        <span className="text-2xl font-bold text-muted-foreground">=</span>
+        {/* No Presupuestados */}
+        <Card 
+          className="border-red-300 bg-red-50 cursor-pointer hover:border-red-500 hover:shadow-sm transition-all"
+          onClick={() => setActiveTab('unbudgeted')}
+        >
+          <CardContent className="p-3 text-center space-y-1">
+            <p className="text-xs text-red-600 font-medium">No Presup.</p>
+            <p className="text-base lg:text-lg font-bold text-red-600">
+              {formatCurrency(totalUnbudgeted, currentHousehold?.currency)}
+            </p>
+            <p className="text-[10px] text-red-500">{unbudgetedExpenses.length} gasto(s)</p>
+          </CardContent>
+        </Card>
 
         {/* Disponible Real */}
         <Card 
-          className={`flex-1 min-w-[160px] max-w-[220px] border-2 cursor-pointer hover:shadow-md transition-all ${
+          className={`border-2 cursor-pointer hover:shadow-sm transition-all ${
             availableReal < 0 
               ? 'border-red-500 bg-red-100 hover:border-red-600' 
               : isWithinBudget 
@@ -1148,13 +1132,13 @@ export default function BudgetPage() {
           }`}
           onClick={() => setActiveTab('balance')}
         >
-          <CardContent className="p-3 text-center">
-            <p className={`text-xs font-medium mb-1 ${
+          <CardContent className="p-3 text-center space-y-1">
+            <p className={`text-xs font-medium ${
               availableReal < 0 ? 'text-red-600' : isWithinBudget ? 'text-green-600' : 'text-amber-600'
             }`}>
               {availableReal < 0 ? '⚠️' : '✓'} Balance
             </p>
-            <p className={`text-xl lg:text-2xl font-bold ${
+            <p className={`text-lg lg:text-xl font-bold ${
               availableReal < 0 ? 'text-red-700' : isWithinBudget ? 'text-green-700' : 'text-amber-700'
             }`}>
               {formatCurrency(availableReal, currentHousehold?.currency)}
