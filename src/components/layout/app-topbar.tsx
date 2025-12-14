@@ -116,17 +116,23 @@ export function AppTopbar() {
           <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuLabel>Mi Cuenta</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => router.push('/app/dashboard')}>
-              <Home className="mr-2 h-4 w-4" />
-              Inicio
+            <DropdownMenuItem asChild>
+              <a href="/app/dashboard">
+                <Home className="mr-2 h-4 w-4" />
+                Inicio
+              </a>
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => router.push('/app/settings')}>
-              <User className="mr-2 h-4 w-4" />
-              Perfil
+            <DropdownMenuItem asChild>
+              <a href="/app/settings">
+                <User className="mr-2 h-4 w-4" />
+                Perfil
+              </a>
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => router.push('/app/settings')}>
-              <Settings className="mr-2 h-4 w-4" />
-              Configuración
+            <DropdownMenuItem asChild>
+              <a href="/app/settings">
+                <Settings className="mr-2 h-4 w-4" />
+                Configuración
+              </a>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem 
