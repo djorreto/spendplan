@@ -148,15 +148,15 @@ export default function HomePage() {
                   <span className="text-xs text-muted-foreground ml-2">SpendPlan Dashboard</span>
                 </div>
                 <div className="p-4 sm:p-6 grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
-                  <StatsPreview label="Gastado (variable + no pres.)" value="$0" trend="Mes en curso" />
-                  <StatsPreview label="Presupuesto usado" value="0%" trend="Esperado 0%" />
-                  <StatsPreview label="Balance / restante" value="$0" trend="Disponible" />
-                  <StatsPreview label="Gastos confirmados" value="0" trend="del mes" />
+                  <StatsPreview label="Gastado este mes" value="$485.200" trend="-12%" positive />
+                  <StatsPreview label="Presupuesto usado" value="68%" trend="En control" positive />
+                  <StatsPreview label="Transacciones" value="47" />
+                  <StatsPreview label="Ahorro vs mes anterior" value="$52.000" trend="+8%" positive />
                 </div>
               </div>
             </div>
             <p className="mt-3 text-center text-xs text-muted-foreground">
-              Vista referencial del dashboard actual (valores e interfaz pueden variar).
+              Vista referencial. Los valores e interfaz pueden variar según tu configuración.
             </p>
           </div>
         </div>
