@@ -1146,39 +1146,41 @@ export default function BudgetPage() {
 
       {/* Main Content */}
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)}>
-        <TabsList className="grid w-full grid-cols-6">
-          <TabsTrigger value="overview">Resumen</TabsTrigger>
-          <TabsTrigger value="income">
-            <span className="flex items-center gap-2">
-              <TrendingUp className="h-4 w-4" />
-              Ingresos ({activeIncomes.length})
-            </span>
-          </TabsTrigger>
-          <TabsTrigger value="fixed">
-            <span className="flex items-center gap-2">
-              <Lock className="h-4 w-4" />
-              Fijos ({activeFixedExpenses.length})
-            </span>
-          </TabsTrigger>
-          <TabsTrigger value="variable">
-            <span className="flex items-center gap-2">
-              <ShoppingCart className="h-4 w-4" />
-              Variables ({activeVariableExpenses.length})
-            </span>
-          </TabsTrigger>
-          <TabsTrigger value="unbudgeted" className={unbudgetedExpenses.length > 0 ? 'text-red-600' : ''}>
-            <span className="flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4" />
-              No Presup. ({unbudgetedExpenses.length})
-            </span>
-          </TabsTrigger>
-          <TabsTrigger value="balance" className={availableReal >= 0 ? 'text-green-600' : 'text-red-600'}>
-            <span className="flex items-center gap-2">
-              <Wallet className="h-4 w-4" />
-              Balance
-            </span>
-          </TabsTrigger>
-        </TabsList>
+        <div className="w-full overflow-x-auto pb-1">
+          <TabsList className="flex w-max sm:w-full sm:flex-wrap gap-2 rounded-lg bg-muted/60 p-2">
+            <TabsTrigger value="overview" className="text-sm px-3 py-2 whitespace-nowrap">Resumen</TabsTrigger>
+            <TabsTrigger value="income" className="text-sm px-3 py-2 whitespace-nowrap">
+              <span className="flex items-center gap-2">
+                <TrendingUp className="h-4 w-4" />
+                Ingresos ({activeIncomes.length})
+              </span>
+            </TabsTrigger>
+            <TabsTrigger value="fixed" className="text-sm px-3 py-2 whitespace-nowrap">
+              <span className="flex items-center gap-2">
+                <Lock className="h-4 w-4" />
+                Fijos ({activeFixedExpenses.length})
+              </span>
+            </TabsTrigger>
+            <TabsTrigger value="variable" className="text-sm px-3 py-2 whitespace-nowrap">
+              <span className="flex items-center gap-2">
+                <ShoppingCart className="h-4 w-4" />
+                Variables ({activeVariableExpenses.length})
+              </span>
+            </TabsTrigger>
+            <TabsTrigger value="unbudgeted" className={`text-sm px-3 py-2 whitespace-nowrap ${unbudgetedExpenses.length > 0 ? 'text-red-600' : ''}`}>
+              <span className="flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4" />
+                No Presup. ({unbudgetedExpenses.length})
+              </span>
+            </TabsTrigger>
+            <TabsTrigger value="balance" className={`text-sm px-3 py-2 whitespace-nowrap ${availableReal >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              <span className="flex items-center gap-2">
+                <Wallet className="h-4 w-4" />
+                Balance
+              </span>
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
         {/* Overview Tab */}
         <TabsContent value="overview" className="space-y-4 mt-4">
