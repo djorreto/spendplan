@@ -670,19 +670,11 @@ export default function DashboardPage() {
   return (
     <div className="max-w-2xl mx-auto px-3 sm:px-0 space-y-3 sm:space-y-6 pb-6">
       <TelegramReminder profile={profile} />
-      <div className="flex items-start justify-between gap-2">
-        <div className="space-y-0.5">
-          <h1 className="text-xl sm:text-2xl font-bold">¿Cómo va el mes?</h1>
-          <p className="text-muted-foreground text-sm">
-            {formatMonth(selectedMonth)} · Día {data?.daysPassed} de {data?.daysInMonth}
-          </p>
-        </div>
-        <Link href="/app/expenses/new">
-          <Button size="sm">
-            <Plus className="mr-1 h-4 w-4" />
-            Gasto
-          </Button>
-        </Link>
+      <div className="space-y-0.5">
+        <h1 className="text-xl sm:text-2xl font-bold">¿Cómo va el mes?</h1>
+        <p className="text-muted-foreground text-sm">
+          {formatMonth(selectedMonth)} · Día {data?.daysPassed} de {data?.daysInMonth}
+        </p>
       </div>
 
       {/* Resumen financiero (antes de detalles) */}
