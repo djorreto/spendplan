@@ -555,6 +555,20 @@ export default function ExpensesPage() {
         </div>
       </div>
 
+      {/* Instrucciones rápidas */}
+      <Card className="bg-muted/20 border-dashed">
+        <CardContent className="p-4 space-y-2 text-sm text-muted-foreground">
+          <p className="text-base font-semibold text-foreground">Cómo funciona esta vista</p>
+          <ul className="list-disc pl-4 space-y-1">
+            <li>Registra gastos reales; los ingresos se cargan en Presupuesto.</li>
+            <li>Si la categoría tiene presupuesto variable activo este mes, el gasto descuenta ese presupuesto y se muestra en “Mes a mes” y “Cumplimiento”.</li>
+            <li>Si la categoría no tiene presupuesto activo, el gasto queda como “No presupuestado”.</li>
+            <li>Usa la fecha correcta: sólo afecta el mes al que pertenece el gasto.</li>
+            <li>“Escanear boleta” precarga datos; puedes ajustar antes de guardar.</li>
+          </ul>
+        </CardContent>
+      </Card>
+
       {/* Filters */}
       <Card>
         <CardContent className="p-4">
