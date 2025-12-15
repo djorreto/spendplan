@@ -361,22 +361,20 @@ export default function MonthlyPage() {
                     })}
                   </TableRow>
                   {expandedVariables.has(item.id) && (
-                    <TableRow key={`${item.id}-details`}>
-                      <TableCell colSpan={monthsWindow.length + 1} className="bg-muted/50">
-                        <div className="space-y-2">
-                          <p className="text-sm font-medium">Gastos reales de la ventana:</p>
-                          {(() => {
-                            const windowMonths = new Set(monthsWindow)
-                            const itemExpenses = expenses
-                              .filter((e) => e.category_id === item.category_id && windowMonths.has(String(e.expense_date).slice(0, 7)))
-                              .sort((a, b) => (a.expense_date > b.expense_date ? -1 : 1))
-                            if (itemExpenses.length === 0) {
-                              return <p className="text-sm text-muted-foreground">Aún no hay gastos registrados para este variable en este rango.</p>
-                            }
-                            return (
-                              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                                {itemExpenses.map((exp) => (
-                                  <div key={exp.id} className="rounded-md border bg-white p-3 shadow-sm">
+                    <TableRow key={`${item.id}-details`} className="bg-muted/40">
+                      <TableCell className="text-sm font-medium text-muted-foreground">Gastos reales</TableCell>
+                      {monthsWindow.map((ym) => {
+                        const cellExpenses = expenses
+                          .filter((e) => e.category_id === item.category_id && String(e.expense_date).startsWith(ym))
+                          .sort((a, b) => (a.expense_date > b.expense_date ? -1 : 1))
+                        return (
+                          <TableCell key={`${item.id}-${ym}`} className="align-top text-sm">
+                            {cellExpenses.length === 0 ? (
+                              <span className="text-muted-foreground">—</span>
+                            ) : (
+                              <div className="space-y-2">
+                                {cellExpenses.map((exp) => (
+                                  <div key={exp.id} className="rounded-md border bg-white p-2 shadow-sm">
                                     <div className="flex items-center justify-between">
                                       <span className="text-sm font-semibold">
                                         {formatCurrency(Number(exp.amount) || 0, currentHousehold?.currency)}
@@ -396,10 +394,10 @@ export default function MonthlyPage() {
                                   </div>
                                 ))}
                               </div>
-                            )
-                          })()}
-                        </div>
-                      </TableCell>
+                            )}
+                          </TableCell>
+                        )
+                      })}
                     </TableRow>
                   )}
                 </React.Fragment>
