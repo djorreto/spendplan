@@ -647,6 +647,90 @@ export default function DashboardPage() {
         </Link>
       </div>
 
+      {/* Resumen financiero (antes de detalles) */}
+      <div className="space-y-2 p-3 bg-muted/20 rounded-xl">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <div className="relative">
+            <span className="absolute -left-2 top-3 px-2 py-1 text-[11px] font-semibold text-muted-foreground bg-muted rounded-full shadow-sm">+</span>
+            <Card className="border-green-200 bg-green-50/70">
+              <CardContent className="p-3 sm:p-4 text-center space-y-1">
+                <p className="text-xs text-green-700 font-medium">Ingresos</p>
+                <p className="text-base lg:text-lg font-bold text-green-700">
+                  {formatCurrency(data?.totalIncome || 0, currentHousehold?.currency)}
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+          <div className="relative">
+            <span className="absolute -left-2 top-3 px-2 py-1 text-[11px] font-semibold text-muted-foreground bg-muted rounded-full shadow-sm">−</span>
+            <Card className="border-blue-200 bg-blue-50/70">
+              <CardContent className="p-3 sm:p-4 text-center space-y-1">
+                <p className="text-xs text-blue-700 font-medium">Fijos</p>
+                <p className="text-base lg:text-lg font-bold text-blue-700">
+                  {formatCurrency(data?.totalFixed || 0, currentHousehold?.currency)}
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <div className="relative">
+            <span className="absolute -left-2 top-3 px-2 py-1 text-[11px] font-semibold text-muted-foreground bg-muted rounded-full shadow-sm">−</span>
+            <Card className="border-amber-200 bg-amber-50/70">
+              <CardContent className="p-3 sm:p-4 text-center space-y-1">
+                <p className="text-xs text-amber-700 font-medium">Variables (gastado)</p>
+                <p className="text-base lg:text-lg font-bold text-amber-700">
+                  {formatCurrency(data?.totalVariableSpent || 0, currentHousehold?.currency)}
+                </p>
+                <p className="text-[11px] text-muted-foreground leading-tight">
+                  de {formatCurrency(data?.totalVariableBudget || 0, currentHousehold?.currency)}
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+          <div className="relative">
+            <span className="absolute -left-2 top-3 px-2 py-1 text-[11px] font-semibold text-muted-foreground bg-muted rounded-full shadow-sm">−</span>
+            <Card className="border-red-300 bg-red-50/80">
+              <CardContent className="p-3 sm:p-4 text-center space-y-1">
+                <p className="text-xs text-red-700 font-medium">No Presup.</p>
+                <p className="text-base lg:text-lg font-bold text-red-700">
+                  {formatCurrency(data?.totalUnbudgeted || 0, currentHousehold?.currency)}
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+
+        <div className="relative">
+          <span className="absolute -left-2 top-3 px-2 py-1 text-[11px] font-semibold text-muted-foreground bg-muted rounded-full shadow-sm">=</span>
+          <Card
+            className={`border-2 ${
+              (data?.availableReal || 0) < 0
+                ? 'border-red-500 bg-red-100'
+                : 'border-green-500 bg-green-100'
+            }`}
+          >
+            <CardContent className="p-3 sm:p-4 text-center space-y-1">
+              <p
+                className={`text-xs font-medium ${
+                  (data?.availableReal || 0) < 0 ? 'text-red-600' : 'text-green-600'
+                }`}
+              >
+                Balance
+              </p>
+              <p
+                className={`text-lg lg:text-xl font-bold ${
+                  (data?.availableReal || 0) < 0 ? 'text-red-700' : 'text-green-700'
+                }`}
+              >
+                {formatCurrency(data?.availableReal || 0, currentHousehold?.currency)}
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
       <Card className="border rounded-xl">
         <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-2 sm:space-y-0 pb-3">
           <div className="flex items-center gap-3">

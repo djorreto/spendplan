@@ -1111,106 +1111,20 @@ export default function BudgetPage() {
         </div>
       </div>
 
-      {/* Summary Cards - Compact formula layout */}
-      <div className="space-y-2 p-2 sm:p-3 bg-muted/20 rounded-xl">
-        {/* Fila 1: Ingresos - Fijos */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <div className="relative">
-            <span className="absolute -left-2 top-3 px-2 py-1 text-[11px] font-semibold text-muted-foreground bg-muted rounded-full shadow-sm">+</span>
-            <Card 
-              className="border-green-200 bg-green-50/70 cursor-pointer hover:border-green-400 hover:shadow-sm transition-all"
-              onClick={() => setActiveTab('income')}
-            >
-              <CardContent className="p-3 sm:p-4 text-center space-y-1">
-                <p className="text-xs text-green-700 font-medium">Ingresos</p>
-                <p className="text-base lg:text-lg font-bold text-green-700">
-                  {formatCurrency(totalIncome, currentHousehold?.currency)}
-                </p>
-              </CardContent>
-            </Card>
-          </div>
-          <div className="relative">
-            <span className="absolute -left-2 top-3 px-2 py-1 text-[11px] font-semibold text-muted-foreground bg-muted rounded-full shadow-sm">−</span>
-            <Card 
-              className="border-blue-200 bg-blue-50/70 cursor-pointer hover:border-blue-400 hover:shadow-sm transition-all"
-              onClick={() => setActiveTab('fixed')}
-            >
-              <CardContent className="p-3 sm:p-4 text-center space-y-1">
-                <p className="text-xs text-blue-700 font-medium">Fijos</p>
-                <p className="text-base lg:text-lg font-bold text-blue-700">
-                  {formatCurrency(totalFixed, currentHousehold?.currency)}
-                </p>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-
-        {/* Fila 2: Variables - No Presupuestados */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <div className="relative">
-            <span className="absolute -left-2 top-3 px-2 py-1 text-[11px] font-semibold text-muted-foreground bg-muted rounded-full shadow-sm">−</span>
-            <Card 
-              className={`cursor-pointer hover:shadow-sm transition-all ${
-                totalVariableSpent > totalVariableBudget ? 'border-amber-400 bg-amber-50' : 'border-amber-200 bg-amber-50/70'
-              }`}
-              onClick={() => setActiveTab('variable')}
-            >
-              <CardContent className="p-3 sm:p-4 text-center space-y-1">
-                <p className="text-xs text-amber-700 font-medium">Variables</p>
-                <p className="text-base lg:text-lg font-bold text-amber-700">
-                  {formatCurrency(totalVariableSpent, currentHousehold?.currency)}
-                </p>
-                <p className="text-[11px] text-muted-foreground leading-tight">
-                  de {formatCurrency(totalVariableBudget, currentHousehold?.currency)}
-                </p>
-              </CardContent>
-            </Card>
-          </div>
-          <div className="relative">
-            <span className="absolute -left-2 top-3 px-2 py-1 text-[11px] font-semibold text-muted-foreground bg-muted rounded-full shadow-sm">−</span>
-            <Card 
-              className="border-red-300 bg-red-50/80 cursor-pointer hover:border-red-500 hover:shadow-sm transition-all"
-              onClick={() => setActiveTab('unbudgeted')}
-            >
-              <CardContent className="p-3 sm:p-4 text-center space-y-1">
-                <p className="text-xs text-red-700 font-medium">No Presup.</p>
-                <p className="text-base lg:text-lg font-bold text-red-700">
-                  {formatCurrency(totalUnbudgeted, currentHousehold?.currency)}
-                </p>
-                <p className="text-[11px] text-red-600">{unbudgetedExpenses.length} gasto(s)</p>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-
-        {/* Fila 3: Balance */}
-        <div className="relative">
-          <span className="absolute -left-2 top-3 px-2 py-1 text-[11px] font-semibold text-muted-foreground bg-muted rounded-full shadow-sm">=</span>
-          <Card 
-            className={`border-2 cursor-pointer hover:shadow-sm transition-all ${
-              availableReal < 0 
-                ? 'border-red-500 bg-red-100' 
-                : isWithinBudget 
-                ? 'border-green-500 bg-green-100' 
-                : 'border-amber-500 bg-amber-100'
-            }`}
-            onClick={() => setActiveTab('balance')}
-          >
-            <CardContent className="p-3 sm:p-4 text-center space-y-1">
-              <p className={`text-xs font-medium ${
-                availableReal < 0 ? 'text-red-600' : isWithinBudget ? 'text-green-600' : 'text-amber-600'
-              }`}>
-                {availableReal < 0 ? '⚠️ Balance' : 'Balance'}
-              </p>
-              <p className={`text-lg lg:text-xl font-bold ${
-                availableReal < 0 ? 'text-red-700' : isWithinBudget ? 'text-green-700' : 'text-amber-700'
-              }`}>
-                {formatCurrency(availableReal, currentHousehold?.currency)}
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+      {/* Instrucciones rápidas */}
+      <Card className="bg-muted/20 border-dashed">
+        <CardContent className="p-4 space-y-2 text-sm text-muted-foreground">
+          <p className="text-base font-semibold text-foreground">Cómo usar Presupuesto</p>
+          <ul className="list-disc pl-4 space-y-1">
+            <li>Ingresos: montos fijos o recurrentes que entran cada mes.</li>
+            <li>Costos fijos: pagos que no cambian mes a mes (ej: arriendo, servicios).</li>
+            <li>Costos variables: presupuestos por categoría; se comparan con los gastos reales del mes.</li>
+            <li>Gastos variables reales: se registran en la vista “Gastos”; si la categoría tiene presupuesto, computa como variable.</li>
+            <li>No presupuestados: gastos sin categoría con presupuesto; se suman aparte.</li>
+            <li>Balance: ingresos menos (fijos + variables reales + no presupuestados).</li>
+          </ul>
+        </CardContent>
+      </Card>
 
       {/* Main Content */}
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)}>
