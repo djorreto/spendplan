@@ -773,17 +773,17 @@ export default function DashboardPage() {
           <CardContent>
             {expensesByCategoryData.length > 0 ? (
               <div className="flex flex-col items-center">
-                <ResponsiveContainer width="100%" height={250}>
+                <ResponsiveContainer width="100%" height={220}>
                   <PieChart>
                     <Pie
                       data={expensesByCategoryData}
                       cx="50%"
                       cy="50%"
-                      innerRadius={60}
-                      outerRadius={100}
+                      innerRadius={55}
+                      outerRadius={85}
                       paddingAngle={2}
                       dataKey="value"
-                      label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                      label={({ percent }) => `${(percent * 100).toFixed(0)}%`}
                       labelLine={false}
                     >
                       {expensesByCategoryData.map((entry, index) => (
