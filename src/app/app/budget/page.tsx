@@ -713,6 +713,16 @@ export default function BudgetPage() {
 
   // ========== CHART DATA ==========
   
+  const getLastMonths = (n: number): string[] => {
+    const months: string[] = []
+    const today = new Date()
+    for (let i = n - 1; i >= 0; i--) {
+      const d = new Date(today.getFullYear(), today.getMonth() - i, 1)
+      months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+    }
+    return months
+  }
+
   // Chart 2: Expenses by Category (Pie Chart) - Selected month
   const expensesByCategoryData = useMemo(() => {
     const monthExpenses = allExpenses.filter(e => e.expense_date.startsWith(pieChartMonth))
