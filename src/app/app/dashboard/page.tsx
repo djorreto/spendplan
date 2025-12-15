@@ -158,6 +158,7 @@ export default function DashboardPage() {
   const [chartBudgetItems, setChartBudgetItems] = useState<BudgetItem[]>([])
   const [chartMonthsFilter, setChartMonthsFilter] = useState(12)
   const [pieChartMonth, setPieChartMonth] = useState(selectedMonth)
+  const [complianceMonth, setComplianceMonth] = useState(selectedMonth)
 
   const getLastMonths = (n: number): string[] => {
     const months: string[] = []
@@ -485,6 +486,31 @@ export default function DashboardPage() {
     })
     return Object.entries(byCategory).map(([_, v]) => v)
   }, [allExpenses, pieChartMonth])
+
+  const budgetComplianceData = useMemo(() => {
+    const monthExpenses = allExpenses.filter((e) => e.expense_date?.startsWith(complianceMonth))
+    const monthDate = new Date(`${complianceMonth}-15`)
+
+    const activeVariables = chartBudgetItems.filter(
+      (i) => i.kind === 'expense' && i.type === 'variable' && isItemActiveByDate(i, monthDate)
+    )
+
+    return activeVariables.map((item) => {
+      const budgeted = getMonthlyAmount(item)
+      const spent = monthExpenses
+        .filter((e) => e.category_id === item.category_id)
+        .reduce((sum, e) => sum + (Number(e.amount) || 0), 0)
+      const percentage = budgeted > 0 ? (spent / budgeted) * 100 : 0
+      return {
+        name: item.name || 'Variable',
+        categoryId: item.category_id,
+        Presupuesto: budgeted,
+        Real: spent,
+        percentage,
+        status: percentage > 100 ? 'over' : percentage > 80 ? 'warning' : 'ok',
+      }
+    })
+  }, [allExpenses, chartBudgetItems, complianceMonth])
 
   const spendRows = useMemo(() => {
     const base = data?.spendByUser || []
@@ -944,6 +970,136 @@ export default function DashboardPage() {
                   ? 'Vas adelantado en el gasto.'
                   : 'Dentro del ritmo esperado.'}
             </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Análisis y Gráficos */}
+      <div className="grid gap-3 sm:gap-4 md:grid-cols-2">
+        <Card className="rounded-xl border">
+          <CardHeader className="pb-2">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div>
+                <CardTitle className="text-base sm:text-lg">Gastos por Categoría</CardTitle>
+                <CardDescription>Distribución del gasto</CardDescription>
+              </div>
+              <Select value={pieChartMonth} onValueChange={setPieChartMonth}>
+                <SelectTrigger className="w-[160px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableMonths.map((month) => (
+                    <SelectItem key={month} value={month}>
+                      {formatMonth(month)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {expensesByCategoryData.length > 0 ? (
+              <div className="flex flex-col items-center">
+                <ResponsiveContainer width="100%" height={220}>
+                  <PieChart>
+                    <Pie
+                      data={expensesByCategoryData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={55}
+                      outerRadius={85}
+                      paddingAngle={2}
+                      dataKey="value"
+                      label={({ percent }) => `${(percent * 100).toFixed(0)}%`}
+                      labelLine={false}
+                    >
+                      {expensesByCategoryData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color || PIE_COLORS[index % PIE_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      formatter={(value: number) => formatCurrency(value, currentHousehold?.currency)}
+                      contentStyle={{
+                        backgroundColor: 'var(--background)',
+                        border: '1px solid var(--border)',
+                        borderRadius: '8px',
+                      }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="flex flex-wrap justify-center gap-3 mt-2">
+                  {expensesByCategoryData.slice(0, 6).map((entry, index) => (
+                    <div key={index} className="flex items-center gap-1.5 text-xs">
+                      <div
+                        className="w-3 h-3 rounded-full"
+                        style={{ backgroundColor: entry.color || PIE_COLORS[index % PIE_COLORS.length] }}
+                      />
+                      <span>{entry.name}</span>
+                      <span className="text-muted-foreground">
+                        ({formatCurrency(entry.value, currentHousehold?.currency)})
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="h-[220px] flex items-center justify-center text-muted-foreground">
+                No hay gastos en {formatMonth(pieChartMonth)}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-xl border">
+          <CardHeader className="pb-2">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div>
+                <CardTitle className="text-base sm:text-lg">Cumplimiento de Presupuesto</CardTitle>
+                <CardDescription>Gastos variables: Real vs Presupuestado</CardDescription>
+              </div>
+              <Select value={complianceMonth} onValueChange={setComplianceMonth}>
+                <SelectTrigger className="w-[160px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableMonths.map((month) => (
+                    <SelectItem key={month} value={month}>
+                      {formatMonth(month)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {budgetComplianceData.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Aún no hay gastos para evaluar.</p>
+            ) : (
+              <div className="space-y-3">
+                {budgetComplianceData.map((item, idx) => (
+                  <div key={item.categoryId || idx} className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm">{item.name}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {formatCurrency(item.Real, currentHousehold?.currency)} / {formatCurrency(item.Presupuesto, currentHousehold?.currency)}
+                      </span>
+                    </div>
+                    <div className="w-full h-2 rounded-full bg-muted">
+                      <div
+                        className={`h-2 rounded-full ${
+                          item.status === 'over'
+                            ? 'bg-red-500'
+                            : item.status === 'warning'
+                            ? 'bg-amber-500'
+                            : 'bg-green-500'
+                        }`}
+                        style={{ width: `${Math.min(item.percentage, 130)}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
