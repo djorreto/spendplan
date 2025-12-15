@@ -184,13 +184,21 @@ export default function ExpensesPage() {
 
   useEffect(() => {
     const newParam = searchParams?.get('new')
+    const editParam = searchParams?.get('edit')
     if (newParam && newParam !== '0' && newParam !== 'false') {
       openNewExpense()
-      // Limpia el query para evitar re-abrir al navegar
       router.replace('/app/expenses')
+      return
+    }
+    if (editParam && expenses.length > 0) {
+      const exp = expenses.find(e => e.id === editParam)
+      if (exp) {
+        openEditExpense(exp)
+        router.replace('/app/expenses')
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams])
+  }, [searchParams, expenses])
 
   const loadData = async () => {
     if (!currentHousehold) return

@@ -2,7 +2,8 @@
 
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -73,6 +74,7 @@ export default function MonthlyPage() {
   const { currentHousehold, isDemoMode } = useHousehold()
   const { selectedMonth } = useSelectedMonth(currentHousehold?.id)
   const { addToast } = useToast()
+  const router = useRouter()
 
   const [budgetItems, setBudgetItems] = useState<BudgetItem[]>([])
   const [categories, setCategories] = useState<Category[]>([])
@@ -80,6 +82,7 @@ export default function MonthlyPage() {
   const [loading, setLoading] = useState(true)
   const [tableMonths, setTableMonths] = useState<7 | 13>(7)
   const [tableAnchorMonth, setTableAnchorMonth] = useState(selectedMonth || getCurrentMonth())
+  const [expandedVariables, setExpandedVariables] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     setTableAnchorMonth(selectedMonth || getCurrentMonth())
@@ -100,6 +103,18 @@ export default function MonthlyPage() {
   const shiftTableWindow = (delta: number) => {
     const nextIdx = monthIndex(tableAnchorMonth) + delta
     setTableAnchorMonth(monthToString(Math.max(nextIdx, 0)).slice(0, 7))
+  }
+
+  const toggleExpanded = (id: string) => {
+    setExpandedVariables((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
   }
 
   const expensesByMonth = useMemo(() => {
@@ -180,7 +195,7 @@ export default function MonthlyPage() {
         withRetry(
           () => supabase
             .from('expenses')
-            .select('id, amount, expense_date, category_id, is_unbudgeted')
+            .select('id, amount, expense_date, category_id, is_unbudgeted, description, merchant')
             .eq('household_id', currentHousehold.id)
             .gte('expense_date', rangeStart)
             .lt('expense_date', rangeEndExclusive)
@@ -266,7 +281,7 @@ export default function MonthlyPage() {
                     <div className="flex items-center gap-2">
                       <span className="font-medium">{item.name || 'Ingreso'}</span>
                       <Badge variant="outline">Ingreso</Badge>
-                      <Button variant="ghost" size="icon" onClick={() => window.location.href = '/app/budget'}>
+                      <Button variant="ghost" size="icon" onClick={() => router.push(`/app/budget?edit=${item.id}`)}>
                         <Edit2 className="h-4 w-4" />
                       </Button>
                     </div>
@@ -289,7 +304,7 @@ export default function MonthlyPage() {
                     <div className="flex items-center gap-2">
                       <span className="font-medium">{item.name || 'Gasto fijo'}</span>
                       <Badge variant="outline">Fijo</Badge>
-                      <Button variant="ghost" size="icon" onClick={() => window.location.href = '/app/budget'}>
+                      <Button variant="ghost" size="icon" onClick={() => router.push(`/app/budget?edit=${item.id}`)}>
                         <Edit2 className="h-4 w-4" />
                       </Button>
                     </div>
@@ -307,30 +322,87 @@ export default function MonthlyPage() {
 
               {/* Variables */}
               {budgetItems.filter(i => i.kind === 'expense' && i.type === 'variable').map((item) => (
-                <TableRow key={item.id}>
-                  <TableCell className="whitespace-nowrap">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{item.name || 'Gasto variable'}</span>
-                      <Badge variant="outline">Variable</Badge>
-                      <Button variant="ghost" size="icon" onClick={() => window.location.href = '/app/budget'}>
-                        <Edit2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                  {monthsWindow.map((ym) => {
-                    const active = isItemActiveByDate(item, new Date(`${ym}-15`))
-                    const summary = monthlySummary[ym]
-                    const budget = active ? getMonthlyAmount(item) : 0
-                    const spent = active ? (summary?.varSpent || 0) : 0
-                    return (
-                      <TableCell key={ym} className="text-right text-sm">
-                        {active
-                          ? `${formatCurrency(spent, currentHousehold?.currency)} / ${formatCurrency(budget, currentHousehold?.currency)}`
-                          : '—'}
+                <React.Fragment key={item.id}>
+                  <TableRow>
+                    <TableCell className="whitespace-nowrap">
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => toggleExpanded(item.id)}
+                          aria-label={expandedVariables.has(item.id) ? 'Ocultar gastos' : 'Ver gastos'}
+                        >
+                          {expandedVariables.has(item.id) ? '−' : '+'}
+                        </Button>
+                        <span className="font-medium">{item.name || 'Gasto variable'}</span>
+                        <Badge variant="outline">Variable</Badge>
+                        <Button variant="ghost" size="icon" onClick={() => router.push(`/app/budget?edit=${item.id}`)}>
+                          <Edit2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                    {monthsWindow.map((ym) => {
+                      const active = isItemActiveByDate(item, new Date(`${ym}-15`))
+                      const budget = active ? getMonthlyAmount(item) : 0
+                      const monthExpenses = expensesByMonth.get(ym) || []
+                      const spent = active
+                        ? monthExpenses
+                            .filter((e) => e.category_id === item.category_id)
+                            .reduce((sum, e) => sum + (Number(e.amount) || 0), 0)
+                        : 0
+                      return (
+                        <TableCell key={ym} className="text-right text-sm">
+                          {active
+                            ? `${formatCurrency(spent, currentHousehold?.currency)} / ${formatCurrency(budget, currentHousehold?.currency)}`
+                            : '—'}
+                        </TableCell>
+                      )
+                    })}
+                  </TableRow>
+                  {expandedVariables.has(item.id) && (
+                    <TableRow key={`${item.id}-details`}>
+                      <TableCell colSpan={monthsWindow.length + 1} className="bg-muted/50">
+                        <div className="space-y-2">
+                          <p className="text-sm font-medium">Gastos reales de la ventana:</p>
+                          {(() => {
+                            const windowMonths = new Set(monthsWindow)
+                            const itemExpenses = expenses
+                              .filter((e) => e.category_id === item.category_id && windowMonths.has(String(e.expense_date).slice(0, 7)))
+                              .sort((a, b) => (a.expense_date > b.expense_date ? -1 : 1))
+                            if (itemExpenses.length === 0) {
+                              return <p className="text-sm text-muted-foreground">Aún no hay gastos registrados para este variable en este rango.</p>
+                            }
+                            return (
+                              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                                {itemExpenses.map((exp) => (
+                                  <div key={exp.id} className="rounded-md border bg-white p-3 shadow-sm">
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-sm font-semibold">
+                                        {formatCurrency(Number(exp.amount) || 0, currentHousehold?.currency)}
+                                      </span>
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        onClick={() => router.push(`/app/expenses?edit=${exp.id}`)}
+                                        aria-label="Editar gasto"
+                                      >
+                                        <Edit2 className="h-4 w-4" />
+                                      </Button>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground">
+                                      {String(exp.expense_date).slice(0, 10)} • {exp.description || exp.merchant || 'Gasto'}
+                                    </p>
+                                  </div>
+                                ))}
+                              </div>
+                            )
+                          })()}
+                        </div>
                       </TableCell>
-                    )
-                  })}
-                </TableRow>
+                    </TableRow>
+                  )}
+                </React.Fragment>
               ))}
 
               {/* No Presupuestados */}

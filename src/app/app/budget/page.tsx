@@ -3,6 +3,7 @@
 export const dynamic = 'force-dynamic'
 
 import React, { useState, useEffect, useMemo } from 'react'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -424,6 +425,8 @@ const TYPE_CONFIG = {
 
 export default function BudgetPage() {
   const { currentHousehold, isDemoMode: isHouseholdDemo } = useHousehold()
+  const searchParams = useSearchParams()
+  const router = useRouter()
   const { selectedMonth } = useSelectedMonth(currentHousehold?.id)
   const { profile } = useAuth()
   const { addToast } = useToast()
@@ -485,6 +488,18 @@ export default function BudgetPage() {
     loadTableExpenses()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentHousehold?.id, isDemo, selectedMonth, tableAnchorMonth, tableMonths])
+
+  // Abrir edición desde query ?edit=<id>
+  useEffect(() => {
+    const editId = searchParams.get('edit')
+    if (!editId || budgetItems.length === 0) return
+    const item = budgetItems.find(i => i.id === editId)
+    if (item) {
+      openEditItem(item)
+      router.replace('/app/budget')
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, budgetItems])
 
   const loadTableExpenses = async () => {
     if (isDemo) {
@@ -1227,143 +1242,6 @@ export default function BudgetPage() {
           </Card>
         </div>
       </div>
-
-      {/* Vista mes a mes (7/13 meses) */}
-      <Card className="mt-4">
-        <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div>
-            <CardTitle className="text-base sm:text-lg">Vista mes a mes</CardTitle>
-            <CardDescription>
-              {monthsWindow[0]} → {monthsWindow[monthsWindow.length - 1]}
-            </CardDescription>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" onClick={() => shiftTableWindow(-1)}>◀</Button>
-            <Button variant="outline" size="sm" onClick={() => shiftTableWindow(1)}>▶</Button>
-            <Button variant="outline" size="sm" onClick={() => setTableMonths(tableMonths === 7 ? 13 : 7)}>
-              {tableMonths === 7 ? 'Ver 13 meses' : 'Ver 7 meses'}
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="min-w-[160px]">Ítem</TableHead>
-                {monthsWindow.map((ym) => (
-                  <TableHead key={ym} className="text-right whitespace-nowrap">
-                    {monthShortLabel(ym)}/{ym.slice(2, 4)}
-                  </TableHead>
-                ))}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {/* Ingresos */}
-              {activeIncomes.map((item) => (
-                <TableRow key={item.id}>
-                  <TableCell className="whitespace-nowrap">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{item.name || 'Ingreso'}</span>
-                      <Badge variant="outline">Ingreso</Badge>
-                      <Button variant="ghost" size="icon" onClick={() => openEditItem(item)}>
-                        <Edit2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                  {monthsWindow.map((ym) => {
-                    const active = isItemActiveByDate(item, new Date(`${ym}-15`))
-                    return (
-                      <TableCell key={ym} className="text-right text-sm">
-                        {active ? formatCurrency(getMonthlyAmount(item), currentHousehold?.currency) : '—'}
-                      </TableCell>
-                    )
-                  })}
-                </TableRow>
-              ))}
-
-              {/* Fijos */}
-              {activeFixedExpenses.map((item) => (
-                <TableRow key={item.id}>
-                  <TableCell className="whitespace-nowrap">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{item.name || 'Gasto fijo'}</span>
-                      <Badge variant="outline">Fijo</Badge>
-                      <Button variant="ghost" size="icon" onClick={() => openEditItem(item)}>
-                        <Edit2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                  {monthsWindow.map((ym) => {
-                    const active = isItemActiveByDate(item, new Date(`${ym}-15`))
-                    return (
-                      <TableCell key={ym} className="text-right text-sm">
-                        {active ? formatCurrency(getMonthlyAmount(item), currentHousehold?.currency) : '—'}
-                      </TableCell>
-                    )
-                  })}
-                </TableRow>
-              ))}
-
-              {/* Variables */}
-              {activeVariableExpenses.map((item) => (
-                <TableRow key={item.id}>
-                  <TableCell className="whitespace-nowrap">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{item.name || 'Gasto variable'}</span>
-                      <Badge variant="outline">Variable</Badge>
-                      <Button variant="ghost" size="icon" onClick={() => openEditItem(item)}>
-                        <Edit2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                  {monthsWindow.map((ym) => {
-                    const active = isItemActiveByDate(item, new Date(`${ym}-15`))
-                    return (
-                      <TableCell key={ym} className="text-right text-sm">
-                        {active ? formatCurrency(getMonthlyAmount(item), currentHousehold?.currency) : '—'}
-                      </TableCell>
-                    )
-                  })}
-                </TableRow>
-              ))}
-
-              {/* No Presupuestados */}
-              <TableRow>
-                <TableCell className="whitespace-nowrap">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-red-700">No Presup.</span>
-                    <Badge variant="outline">Gastos</Badge>
-                  </div>
-                </TableCell>
-                {monthsWindow.map((ym) => (
-                  <TableCell key={ym} className="text-right text-sm text-red-700">
-                    {monthlySummary[ym] ? formatCurrency(monthlySummary[ym].unbudgeted, currentHousehold?.currency) : '—'}
-                  </TableCell>
-                ))}
-              </TableRow>
-
-              {/* Balance */}
-              <TableRow>
-                <TableCell className="whitespace-nowrap">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold">Balance</span>
-                  </div>
-                </TableCell>
-                {monthsWindow.map((ym) => (
-                  <TableCell
-                    key={ym}
-                    className={`text-right text-sm ${
-                      monthlySummary[ym]?.balance < 0 ? 'text-red-700' : 'text-green-700'
-                    }`}
-                  >
-                    {monthlySummary[ym] ? formatCurrency(monthlySummary[ym].balance, currentHousehold?.currency) : '—'}
-                  </TableCell>
-                ))}
-              </TableRow>
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
 
       {/* Main Content */}
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)}>
