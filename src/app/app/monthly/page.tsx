@@ -94,6 +94,7 @@ export default function MonthlyPage() {
   const [tableMonths, setTableMonths] = useState<7 | 13>(7)
   const [tableAnchorMonth, setTableAnchorMonth] = useState(selectedMonth || getCurrentMonth())
   const [expandedVariables, setExpandedVariables] = useState<Set<string>>(new Set())
+  const [expandedUnbudgeted, setExpandedUnbudgeted] = useState(false)
   const [editItem, setEditItem] = useState<BudgetItem | null>(null)
   const [editOpen, setEditOpen] = useState(false)
   const [editSaving, setEditSaving] = useState(false)
@@ -123,6 +124,10 @@ export default function MonthlyPage() {
   const shiftTableWindow = (delta: number) => {
     const nextIdx = monthIndex(tableAnchorMonth) + delta
     setTableAnchorMonth(monthToString(Math.max(nextIdx, 0)).slice(0, 7))
+  }
+
+  const anchorToCurrent = () => {
+    setTableAnchorMonth(getCurrentMonth())
   }
 
   const toggleExpanded = (id: string) => {
@@ -314,6 +319,9 @@ export default function MonthlyPage() {
           <Button variant="outline" size="sm" onClick={() => setTableMonths(tableMonths === 7 ? 13 : 7)}>
             {tableMonths === 7 ? 'Ver 13 meses' : 'Ver 7 meses'}
           </Button>
+          <Button variant="outline" size="sm" onClick={anchorToCurrent}>
+            Ir a mes actual
+          </Button>
           <Button variant="outline" size="sm" onClick={() => shiftTableWindow(-1)}>
             <ChevronLeft className="h-4 w-4" />
           </Button>
@@ -476,6 +484,15 @@ export default function MonthlyPage() {
               <TableRow>
                 <TableCell className="whitespace-nowrap">
                   <div className="flex items-center gap-2">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => setExpandedUnbudgeted((v) => !v)}
+                      aria-label={expandedUnbudgeted ? 'Ocultar no presupuestados' : 'Ver no presupuestados'}
+                    >
+                      {expandedUnbudgeted ? '−' : '+'}
+                    </Button>
                     <span className="font-medium text-red-700">No Presup.</span>
                     <Badge variant="outline">Gastos</Badge>
                   </div>
@@ -486,6 +503,46 @@ export default function MonthlyPage() {
                   </TableCell>
                 ))}
               </TableRow>
+              {expandedUnbudgeted && (
+                <TableRow className="bg-muted/40">
+                  <TableCell className="text-sm font-medium text-muted-foreground">Gastos reales</TableCell>
+                  {monthsWindow.map((ym) => {
+                    const cellExpenses = expenses
+                      .filter((e) => (!e.category_id || !variableCategoryIds.has(e.category_id) || e.is_unbudgeted) && String(e.expense_date).startsWith(ym))
+                      .sort((a, b) => (a.expense_date > b.expense_date ? -1 : 1))
+                    return (
+                      <TableCell key={`unb-${ym}`} className="align-top text-xs sm:text-sm">
+                        {cellExpenses.length === 0 ? (
+                          <span className="text-muted-foreground">—</span>
+                        ) : (
+                          <div className="space-y-2">
+                            {cellExpenses.map((exp) => (
+                              <div key={exp.id} className="rounded-md border bg-white p-2 shadow-sm">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-xs sm:text-sm font-semibold">
+                                    {formatCurrency(Number(exp.amount) || 0, currentHousehold?.currency)}
+                                  </span>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => router.push(`/app/expenses?edit=${exp.id}`)}
+                                    aria-label="Editar gasto"
+                                  >
+                                    <Edit2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                                <p className="text-[11px] sm:text-xs text-muted-foreground">
+                                  {String(exp.expense_date).slice(0, 10)} • {exp.description || exp.merchant || 'Gasto'}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </TableCell>
+                    )
+                  })}
+                </TableRow>
+              )}
 
               {/* Balance planificado */}
               <TableRow>
