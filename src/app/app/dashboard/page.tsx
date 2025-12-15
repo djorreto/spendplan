@@ -130,16 +130,6 @@ interface DashboardData {
 
 const PIE_COLORS = ['#22c55e', '#3b82f6', '#a855f7', '#f59e0b', '#ef4444', '#06b6d4', '#84cc16', '#ec4899', '#64748b']
 
-const getLastMonths = (n: number): string[] => {
-  const months: string[] = []
-  const today = new Date()
-  for (let i = n - 1; i >= 0; i--) {
-    const d = new Date(today.getFullYear(), today.getMonth() - i, 1)
-    months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
-  }
-  return months
-}
-
 function isItemActiveByDate(item: BudgetItem, referenceDate: Date = new Date()): boolean {
   if ((item as any).is_active === false) return false
   const startDate = item.start_date ? new Date(item.start_date) : null
@@ -168,6 +158,16 @@ export default function DashboardPage() {
   const [chartBudgetItems, setChartBudgetItems] = useState<BudgetItem[]>([])
   const [chartMonthsFilter, setChartMonthsFilter] = useState(12)
   const [pieChartMonth, setPieChartMonth] = useState(selectedMonth)
+
+  const getLastMonths = (n: number): string[] => {
+    const months: string[] = []
+    const today = new Date()
+    for (let i = n - 1; i >= 0; i--) {
+      const d = new Date(today.getFullYear(), today.getMonth() - i, 1)
+      months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+    }
+    return months
+  }
 
   useEffect(() => {
     if (currentHousehold) {
