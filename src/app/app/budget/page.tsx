@@ -10,7 +10,6 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Switch } from '@/components/ui/switch'
 import {
   Select,
   SelectContent,
@@ -53,9 +52,6 @@ import {
   Eye,
   EyeOff,
   Clock,
-  CheckCircle2,
-  XCircle,
-  History,
   Filter,
   ChevronDown,
   ChevronRight,
@@ -441,7 +437,6 @@ export default function BudgetPage() {
   
   // View state
   const [currentMonth] = useState(getCurrentMonth())
-  const [showInactive, setShowInactive] = useState(false)
   const [activeTab, setActiveTab] = useState<'overview' | 'income' | 'fixed' | 'variable' | 'unbudgeted' | 'balance'>('overview')
   const [expandedBalanceRows, setExpandedBalanceRows] = useState<Set<string>>(new Set())
   
@@ -610,9 +605,8 @@ export default function BudgetPage() {
 
   // Filter items
   const filteredItems = useMemo(() => {
-    if (showInactive) return budgetItems
     return budgetItems.filter(item => item.is_active)
-  }, [budgetItems, showInactive])
+}, [budgetItems])
 
   const activeIncomes = filteredItems.filter(i => i.kind === 'income')
   const activeFixedExpenses = filteredItems.filter(i => i.kind === 'expense' && i.type === 'fixed')
@@ -951,26 +945,6 @@ export default function BudgetPage() {
     setDialogOpen(false)
     setIsNewCategory(false)
     setNewCategoryName('')
-  }
-
-  const toggleItemActive = async (item: BudgetItem) => {
-    const updatedItem = {
-      ...item,
-      manually_deactivated: !item.manually_deactivated,
-      is_active: item.manually_deactivated ? isItemActiveByDate(item) : false,
-      updated_at: new Date().toISOString(),
-    }
-    
-    const updatedItems = budgetItems.map(i => i.id === item.id ? updatedItem : i)
-    setBudgetItems(updatedItems)
-    
-    if (isDemo) {
-      saveBudgetData({ items: updatedItems })
-    } else if (currentHousehold && profile) {
-      await saveBudgetItemToSupabase(updatedItem, currentHousehold.id, profile.id)
-    }
-    
-    addToast({ type: 'success', message: item.is_active ? 'Item desactivado' : 'Item reactivado' })
   }
 
   const deleteItem = async (id: string) => {
@@ -1507,9 +1481,7 @@ export default function BudgetPage() {
                   categories={categories}
                   currency={currentHousehold?.currency}
                   onEdit={openEditItem}
-                  onToggle={toggleItemActive}
                   onDelete={deleteItem}
-                  showInactive={showInactive}
                 />
               )}
           </CardContent>
@@ -1546,9 +1518,7 @@ export default function BudgetPage() {
                   categories={categories}
                   currency={currentHousehold?.currency}
                   onEdit={openEditItem}
-                  onToggle={toggleItemActive}
                   onDelete={deleteItem}
-                  showInactive={showInactive}
                 />
               )}
             </CardContent>
@@ -1585,9 +1555,7 @@ export default function BudgetPage() {
                   categories={categories}
                   currency={currentHousehold?.currency}
                   onEdit={openEditItem}
-                  onToggle={toggleItemActive}
                   onDelete={deleteItem}
-                  showInactive={showInactive}
                   showSpent
                   getSpent={getSpentForCategory}
                   onRegisterExpense={openExpenseDialog}
@@ -2582,9 +2550,7 @@ function ItemList({
   categories, 
   currency, 
   onEdit, 
-  onToggle, 
   onDelete,
-  showInactive,
   showSpent = false,
   getSpent,
   onRegisterExpense
@@ -2593,9 +2559,7 @@ function ItemList({
   categories: Category[]
   currency?: string
   onEdit: (item: BudgetItem) => void
-  onToggle: (item: BudgetItem) => void
   onDelete: (id: string) => void
-  showInactive: boolean
   showSpent?: boolean
   getSpent?: (categoryId?: string) => number
   onRegisterExpense?: (item: BudgetItem) => void
@@ -2739,17 +2703,8 @@ function ItemList({
                     <DropdownMenuSeparator />
                   </>
                 )}
-                {item.is_active && (
-                  <DropdownMenuItem onClick={() => onEdit(item)}>
-                    <Edit2 className="mr-2 h-4 w-4" /> Editar
-                  </DropdownMenuItem>
-                )}
-                <DropdownMenuItem onClick={() => onToggle(item)}>
-                  {item.is_active ? (
-                    <><XCircle className="mr-2 h-4 w-4" /> Desactivar</>
-                  ) : (
-                    <><CheckCircle2 className="mr-2 h-4 w-4" /> Reactivar</>
-                  )}
+                <DropdownMenuItem onClick={() => onEdit(item)}>
+                  <Edit2 className="mr-2 h-4 w-4" /> Editar
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => onDelete(item.id)} className="text-destructive">
