@@ -49,17 +49,6 @@ import {
   Sparkles
 } from 'lucide-react'
 import { TelegramReminder } from '@/components/telegram/telegram-reminder'
-import {
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-} from 'recharts'
-
 // Demo mode constants (must match budget/page.tsx)
 const DEMO_BUDGET_KEY = 'spendplan_demo_budget_v2'
 const DEMO_EXPENSES_KEY = 'spendplan_demo_expenses'
