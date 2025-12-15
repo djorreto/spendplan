@@ -144,6 +144,18 @@ function isItemActiveByDate(item: BudgetItem, referenceDate: Date = new Date()):
   return true
 }
 
+const getMonthlyAmount = (item: BudgetItem & { frequency?: string }) => {
+  const freq = (item as any).frequency || 'monthly'
+  const multipliers: Record<string, number> = {
+    monthly: 1,
+    weekly: 4.33,
+    biweekly: 2,
+    yearly: 1 / 12,
+    one_time: 1,
+  }
+  return (item.amount || 0) * (multipliers[freq] || 1)
+}
+
 export default function DashboardPage() {
   const { currentHousehold, isDemoMode } = useHousehold()
   const { user, profile } = useAuth()
