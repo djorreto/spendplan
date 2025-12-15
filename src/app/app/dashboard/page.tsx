@@ -8,6 +8,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { useHousehold } from '@/hooks/use-household'
 import { useSelectedMonth } from '@/hooks/use-selected-month'
 import { useAuth } from '@/hooks/use-auth'
@@ -28,6 +36,16 @@ import {
   Sparkles
 } from 'lucide-react'
 import { TelegramReminder } from '@/components/telegram/telegram-reminder'
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+} from 'recharts'
 
 // Demo mode constants (must match budget/page.tsx)
 const DEMO_BUDGET_KEY = 'spendplan_demo_budget_v2'
@@ -108,6 +126,30 @@ interface DashboardData {
   daysPassed: number
 }
 
+const getLastMonths = (n: number): string[] => {
+  const months: string[] = []
+  const today = new Date()
+  for (let i = n - 1; i >= 0; i--) {
+    const d = new Date(today.getFullYear(), today.getMonth() - i, 1)
+    months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+  }
+  return months
+}
+
+function isItemActiveByDate(item: BudgetItem, referenceDate: Date = new Date()): boolean {
+  if ((item as any).is_active === false) return false
+  const startDate = item.start_date ? new Date(item.start_date) : null
+  const endDate = item.end_date ? new Date(item.end_date) : null
+  if (startDate && referenceDate < startDate) return false
+  if (!item.is_indefinite && endDate) {
+    const end = new Date(endDate)
+    end.setMonth(end.getMonth() + 1)
+    end.setDate(0)
+    if (referenceDate > end) return false
+  }
+  return true
+}
+
 export default function DashboardPage() {
   const { currentHousehold, isDemoMode } = useHousehold()
   const { user, profile } = useAuth()
@@ -118,6 +160,9 @@ export default function DashboardPage() {
   const [includeFixedInPeople, setIncludeFixedInPeople] = useState(false)
   const [collapseRecent, setCollapseRecent] = useState(false)
   const [collapsePeople, setCollapsePeople] = useState(false)
+  const [allExpenses, setAllExpenses] = useState<Expense[]>([])
+  const [chartBudgetItems, setChartBudgetItems] = useState<BudgetItem[]>([])
+  const [chartMonthsFilter, setChartMonthsFilter] = useState(12)
 
   useEffect(() => {
     if (currentHousehold) {
@@ -149,6 +194,8 @@ export default function DashboardPage() {
       const categories = [...DEMO_CATEGORIES, ...customCategories]
       
       const monthExpenses = allExpenses.filter(e => e.expense_date?.startsWith(selectedMonth))
+      setAllExpenses(allExpenses)
+      setChartBudgetItems(budgetItems)
       
       const isItemActive = (item: BudgetItem) => {
         if (item.is_active === false) return false
@@ -238,7 +285,14 @@ export default function DashboardPage() {
       // Load from Supabase for real users (budget + expenses)
       try {
         const supabase = supabaseBrowser()
-        const range = getMonthDateRange(selectedMonth)
+      const chartMonthsWindow = Math.max(chartMonthsFilter, 12)
+      const chartMonthsRange = getLastMonths(chartMonthsWindow)
+      const chartRangeStart = `${chartMonthsRange[0]}-01`
+      const nextMonth = new Date()
+      nextMonth.setMonth(nextMonth.getMonth() + 1, 1)
+      const chartRangeEndExclusive = nextMonth.toISOString().slice(0, 10)
+
+      const range = getMonthDateRange(selectedMonth)
 
         const [expensesResp, budgetResp] = await Promise.all([
           withRetry(
@@ -247,11 +301,11 @@ export default function DashboardPage() {
                 .from('expenses')
                 .select('id, amount, description, merchant, expense_date, category_id, is_unbudgeted, created_by, status, category:categories!expenses_category_id_fkey(name), created_by_profile:profiles!expenses_created_by_fkey(full_name, email, avatar_url)')
                 .eq('household_id', currentHousehold.id)
-                .gte('expense_date', range.start)
-                .lt('expense_date', range.endExclusive)
+              .gte('expense_date', chartRangeStart)
+              .lt('expense_date', chartRangeEndExclusive)
                 .eq('status', 'confirmed')
                 .order('expense_date', { ascending: false })
-                .limit(500),
+              .limit(1000),
             { retries: 2, baseDelayMs: 250, ctx: op, step: 'select.expenses' }
           ),
           withRetry(
@@ -267,12 +321,14 @@ export default function DashboardPage() {
         if (expensesResp.error) throw expensesResp.error
         if (budgetResp.error) throw budgetResp.error
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const monthExpenses: any[] = (expensesResp.data || []).filter(
-          (e: any) => e.expense_date >= range.start && e.expense_date < range.endExclusive
+        const allExpensesData: any[] = expensesResp.data || []
+        const monthExpenses: any[] = allExpensesData.filter(
+          (e: any) => e.expense_date.startsWith(selectedMonth)
         )
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const budgetItems: any[] = budgetResp.data || []
+        setAllExpenses(allExpensesData)
+        setChartBudgetItems(budgetItems)
 
         const isItemActive = (item: any) => {
           if (item.is_active === false) return false
@@ -377,6 +433,29 @@ export default function DashboardPage() {
   }
 
   // NOTE: These memos must be declared before any early return (React hooks rule).
+  const incomeVsExpensesData = useMemo(() => {
+    const months = getLastMonths(chartMonthsFilter)
+    return months.map((month) => {
+      const monthExpenses = allExpenses.filter((e) => e.expense_date.startsWith(month))
+      const totalSpent = monthExpenses.reduce((sum, e) => sum + (e.amount || 0), 0)
+
+      const monthDate = new Date(`${month}-15`)
+      const activeIncomes = chartBudgetItems.filter((i) => i.kind === 'income' && isItemActiveByDate(i, monthDate))
+      const monthIncome = activeIncomes.reduce((sum, i) => sum + (i.amount || 0), 0)
+
+      const [year, m] = month.split('-')
+      const monthName = new Date(parseInt(year), parseInt(m) - 1).toLocaleDateString('es-CL', { month: 'short' })
+
+      return {
+        month: `${monthName} ${year.slice(2)}`,
+        fullMonth: month,
+        Ingresos: monthIncome,
+        Gastos: totalSpent,
+        balance: monthIncome - totalSpent,
+      }
+    })
+  }, [allExpenses, chartBudgetItems, chartMonthsFilter])
+
   const spendRows = useMemo(() => {
     const base = data?.spendByUser || []
     if (!includeFixedInPeople) return base
@@ -585,6 +664,57 @@ export default function DashboardPage() {
                 : formatCurrency(budgetRemaining, currentHousehold?.currency)}
             </p>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card className="rounded-xl border">
+        <CardHeader className="pb-2">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <CardTitle className="text-base sm:text-lg">Ingresos vs Gastos</CardTitle>
+              <CardDescription>Comparativa mensual</CardDescription>
+            </div>
+            <div className="flex items-center gap-2">
+              <Label className="text-sm text-muted-foreground">Mostrar:</Label>
+              <Select value={String(chartMonthsFilter)} onValueChange={(v) => setChartMonthsFilter(Number(v))}>
+                <SelectTrigger className="w-[140px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="3">Últimos 3 meses</SelectItem>
+                  <SelectItem value="6">Últimos 6 meses</SelectItem>
+                  <SelectItem value="12">Últimos 12 meses</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {incomeVsExpensesData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={incomeVsExpensesData} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+                <YAxis tick={{ fontSize: 12 }} tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`} />
+                <Tooltip
+                  formatter={(value: number) => formatCurrency(value, currentHousehold?.currency)}
+                  labelStyle={{ color: 'var(--foreground)' }}
+                  contentStyle={{
+                    backgroundColor: 'var(--background)',
+                    border: '1px solid var(--border)',
+                    borderRadius: '8px',
+                  }}
+                />
+                <Legend />
+                <Bar dataKey="Ingresos" fill="#22c55e" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="Gastos" fill="#ef4444" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+              No hay datos para mostrar
+            </div>
+          )}
         </CardContent>
       </Card>
 

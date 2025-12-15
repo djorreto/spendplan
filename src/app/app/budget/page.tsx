@@ -70,19 +70,7 @@ import type { Category, Expense, PaymentMethod } from '@/types'
 import { supabaseBrowser } from '@/lib/supabase'
 import { useAuth } from '@/hooks/use-auth'
 import { endOp, formatSupabaseError, logOp, startOp, withRetry } from '@/lib/debug-log'
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-} from 'recharts'
+import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from 'recharts'
 
 // Storage keys
 const DEMO_BUDGET_KEY = 'spendplan_demo_budget_v2'
@@ -474,7 +462,6 @@ export default function BudgetPage() {
   const [conflictDialogOpen, setConflictDialogOpen] = useState(false)
   
   // Chart filter states
-  const [chartMonthsFilter, setChartMonthsFilter] = useState(12) // Last N months
   const [pieChartMonth, setPieChartMonth] = useState(getCurrentMonth())
   const [complianceMonth, setComplianceMonth] = useState(getCurrentMonth())
   useEffect(() => {
@@ -726,44 +713,6 @@ export default function BudgetPage() {
 
   // ========== CHART DATA ==========
   
-  // Helper: Get last N months
-  const getLastMonths = (n: number): string[] => {
-    const months: string[] = []
-    const today = new Date()
-    for (let i = n - 1; i >= 0; i--) {
-      const d = new Date(today.getFullYear(), today.getMonth() - i, 1)
-      months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
-    }
-    return months
-  }
-
-  // Chart 1: Income vs Expenses (Bar Chart) - Last N months
-  const incomeVsExpensesData = useMemo(() => {
-    const months = getLastMonths(chartMonthsFilter)
-    return months.map(month => {
-      const monthExpenses = allExpenses.filter(e => e.expense_date.startsWith(month))
-      const totalSpent = monthExpenses.reduce((sum, e) => sum + e.amount, 0)
-      
-      // Calculate income for this month from budget items
-      const monthDate = new Date(month + '-15')
-      const activeIncomesForMonth = budgetItems.filter(
-        i => i.kind === 'income' && isItemActiveByDate(i, monthDate)
-      )
-      const monthIncome = activeIncomesForMonth.reduce((sum, i) => sum + getMonthlyAmount(i), 0)
-      
-      const [year, m] = month.split('-')
-      const monthName = new Date(parseInt(year), parseInt(m) - 1).toLocaleDateString('es-CL', { month: 'short' })
-      
-      return {
-        month: `${monthName} ${year.slice(2)}`,
-        fullMonth: month,
-        Ingresos: monthIncome,
-        Gastos: totalSpent,
-        balance: monthIncome - totalSpent,
-      }
-    })
-  }, [allExpenses, budgetItems, chartMonthsFilter])
-
   // Chart 2: Expenses by Category (Pie Chart) - Selected month
   const expensesByCategoryData = useMemo(() => {
     const monthExpenses = allExpenses.filter(e => e.expense_date.startsWith(pieChartMonth))
@@ -1947,61 +1896,6 @@ export default function BudgetPage() {
       {/* ========== CHARTS SECTION ========== */}
       <div className="space-y-6 mt-8">
         <h2 className="text-2xl font-bold">Análisis y Gráficos</h2>
-        
-        {/* Chart 1: Income vs Expenses Bar Chart */}
-        <Card>
-          <CardHeader className="pb-2">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-              <div>
-                <CardTitle className="text-lg">Ingresos vs Gastos</CardTitle>
-                <CardDescription>Comparativa mensual</CardDescription>
-              </div>
-              <div className="flex items-center gap-2">
-                <Label className="text-sm text-muted-foreground">Mostrar:</Label>
-                <Select value={String(chartMonthsFilter)} onValueChange={(v) => setChartMonthsFilter(Number(v))}>
-                  <SelectTrigger className="w-[140px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="3">Últimos 3 meses</SelectItem>
-                    <SelectItem value="6">Últimos 6 meses</SelectItem>
-                    <SelectItem value="12">Últimos 12 meses</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {incomeVsExpensesData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={incomeVsExpensesData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                  <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                  <YAxis 
-                    tick={{ fontSize: 12 }} 
-                    tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`}
-                  />
-                  <Tooltip 
-                    formatter={(value: number) => formatCurrency(value, currentHousehold?.currency)}
-                    labelStyle={{ color: 'var(--foreground)' }}
-                    contentStyle={{ 
-                      backgroundColor: 'var(--background)', 
-                      border: '1px solid var(--border)',
-                      borderRadius: '8px'
-                    }}
-                  />
-                  <Legend />
-                  <Bar dataKey="Ingresos" fill="#22c55e" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="Gastos" fill="#ef4444" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="h-[300px] flex items-center justify-center text-muted-foreground">
-                No hay datos para mostrar
-              </div>
-            )}
-          </CardContent>
-        </Card>
 
         {/* Charts Row: Pie Chart + Compliance */}
         <div className="grid gap-6 md:grid-cols-2">
