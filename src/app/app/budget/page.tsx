@@ -64,6 +64,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import type { Category, Expense, PaymentMethod } from '@/types'
 import { supabaseBrowser } from '@/lib/supabase'
 import { useAuth } from '@/hooks/use-auth'
