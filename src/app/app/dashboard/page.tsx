@@ -16,19 +16,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import {
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  PieChart,
-  Pie,
-  Cell,
-} from 'recharts'
 import { useHousehold } from '@/hooks/use-household'
 import { useSelectedMonth } from '@/hooks/use-selected-month'
 import { useAuth } from '@/hooks/use-auth'
