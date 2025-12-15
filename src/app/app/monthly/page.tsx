@@ -306,6 +306,9 @@ export default function MonthlyPage() {
         <div>
           <h1 className="text-2xl font-bold">Mes a mes</h1>
           <p className="text-muted-foreground">Comparativo mensual de ingresos y gastos</p>
+          <p className="text-xs text-muted-foreground mt-1 sm:hidden">
+            En móviles, desliza horizontal para ver los meses. Mejor en tablet o PC.
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={() => setTableMonths(tableMonths === 7 ? 13 : 7)}>
@@ -331,9 +334,9 @@ export default function MonthlyPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="min-w-[180px]">Ítem</TableHead>
+                <TableHead className="min-w-[140px] sm:min-w-[180px] text-xs sm:text-sm">Ítem</TableHead>
                 {monthsWindow.map((ym) => (
-                  <TableHead key={ym} className="text-right whitespace-nowrap">
+                  <TableHead key={ym} className="text-right whitespace-nowrap text-xs sm:text-sm">
                     {monthShortLabel(ym)}/{ym.slice(2, 4)}
                   </TableHead>
                 ))}
@@ -355,7 +358,7 @@ export default function MonthlyPage() {
                   {monthsWindow.map((ym) => {
                     const active = isItemActiveByDate(item, new Date(`${ym}-15`))
                     return (
-                      <TableCell key={ym} className="text-right text-sm">
+                      <TableCell key={ym} className="text-right text-xs sm:text-sm">
                         {active ? formatCurrency(getMonthlyAmount(item), currentHousehold?.currency) : '—'}
                       </TableCell>
                     )
@@ -378,7 +381,7 @@ export default function MonthlyPage() {
                   {monthsWindow.map((ym) => {
                     const active = isItemActiveByDate(item, new Date(`${ym}-15`))
                     return (
-                      <TableCell key={ym} className="text-right text-sm">
+                      <TableCell key={ym} className="text-right text-xs sm:text-sm">
                         {active ? formatCurrency(getMonthlyAmount(item), currentHousehold?.currency) : '—'}
                       </TableCell>
                     )
@@ -418,7 +421,7 @@ export default function MonthlyPage() {
                             .reduce((sum, e) => sum + (Number(e.amount) || 0), 0)
                         : 0
                       return (
-                        <TableCell key={ym} className="text-right text-sm">
+                        <TableCell key={ym} className="text-right text-xs sm:text-sm">
                           {active
                             ? `${formatCurrency(spent, currentHousehold?.currency)} / ${formatCurrency(budget, currentHousehold?.currency)}`
                             : '—'}
@@ -434,7 +437,7 @@ export default function MonthlyPage() {
                           .filter((e) => e.category_id === item.category_id && String(e.expense_date).startsWith(ym))
                           .sort((a, b) => (a.expense_date > b.expense_date ? -1 : 1))
                         return (
-                          <TableCell key={`${item.id}-${ym}`} className="align-top text-sm">
+                          <TableCell key={`${item.id}-${ym}`} className="align-top text-xs sm:text-sm">
                             {cellExpenses.length === 0 ? (
                               <span className="text-muted-foreground">—</span>
                             ) : (
@@ -442,7 +445,7 @@ export default function MonthlyPage() {
                                 {cellExpenses.map((exp) => (
                                   <div key={exp.id} className="rounded-md border bg-white p-2 shadow-sm">
                                     <div className="flex items-center justify-between">
-                                      <span className="text-sm font-semibold">
+                                      <span className="text-xs sm:text-sm font-semibold">
                                         {formatCurrency(Number(exp.amount) || 0, currentHousehold?.currency)}
                                       </span>
                                       <Button
@@ -454,7 +457,7 @@ export default function MonthlyPage() {
                                         <Edit2 className="h-4 w-4" />
                                       </Button>
                                     </div>
-                                    <p className="text-xs text-muted-foreground">
+                                    <p className="text-[11px] sm:text-xs text-muted-foreground">
                                       {String(exp.expense_date).slice(0, 10)} • {exp.description || exp.merchant || 'Gasto'}
                                     </p>
                                   </div>
@@ -478,7 +481,7 @@ export default function MonthlyPage() {
                   </div>
                 </TableCell>
                 {monthsWindow.map((ym) => (
-                  <TableCell key={ym} className="text-right text-sm text-red-700">
+                  <TableCell key={ym} className="text-right text-xs sm:text-sm text-red-700">
                     {monthlySummary[ym] ? formatCurrency(monthlySummary[ym].unbudgeted, currentHousehold?.currency) : '—'}
                   </TableCell>
                 ))}
@@ -494,7 +497,7 @@ export default function MonthlyPage() {
                 {monthsWindow.map((ym) => (
                   <TableCell
                     key={ym}
-                    className={`text-right text-sm ${
+                    className={`text-right text-xs sm:text-sm ${
                       monthlySummary[ym]?.balancePlanned < 0 ? 'text-red-700' : 'text-green-700'
                     }`}
                   >
@@ -513,7 +516,7 @@ export default function MonthlyPage() {
                 {monthsWindow.map((ym) => (
                   <TableCell
                     key={ym}
-                    className={`text-right text-sm ${
+                    className={`text-right text-xs sm:text-sm ${
                       monthlySummary[ym]?.balance < 0 ? 'text-red-700' : 'text-green-700'
                     }`}
                   >
