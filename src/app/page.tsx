@@ -170,7 +170,7 @@ export default function HomePage() {
               Todo lo que necesitas para controlar tus finanzas
             </h2>
             <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-              Diseñado para familias chilenas que quieren tener claridad sobre sus gastos
+              Diseñado para familias que quieren tener claridad sobre sus gastos
             </p>
           </div>
 

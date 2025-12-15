@@ -16,6 +16,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  PieChart,
+  Pie,
+  Cell,
+} from 'recharts'
 import { useHousehold } from '@/hooks/use-household'
 import { useSelectedMonth } from '@/hooks/use-selected-month'
 import { useAuth } from '@/hooks/use-auth'
@@ -126,6 +139,8 @@ interface DashboardData {
   daysPassed: number
 }
 
+const PIE_COLORS = ['#22c55e', '#3b82f6', '#a855f7', '#f59e0b', '#ef4444', '#06b6d4', '#84cc16', '#ec4899', '#64748b']
+
 const getLastMonths = (n: number): string[] => {
   const months: string[] = []
   const today = new Date()
@@ -163,12 +178,17 @@ export default function DashboardPage() {
   const [allExpenses, setAllExpenses] = useState<Expense[]>([])
   const [chartBudgetItems, setChartBudgetItems] = useState<BudgetItem[]>([])
   const [chartMonthsFilter, setChartMonthsFilter] = useState(12)
+  const [pieChartMonth, setPieChartMonth] = useState(selectedMonth)
 
   useEffect(() => {
     if (currentHousehold) {
       loadDashboardData()
     }
   }, [currentHousehold?.id, currentHousehold?.currency, isDemoMode, selectedMonth])
+
+  useEffect(() => {
+    setPieChartMonth(selectedMonth)
+  }, [selectedMonth])
 
   const loadDashboardData = async () => {
     if (!currentHousehold) return
@@ -456,6 +476,27 @@ export default function DashboardPage() {
     })
   }, [allExpenses, chartBudgetItems, chartMonthsFilter])
 
+  const availableMonths = useMemo(() => {
+    const set = new Set<string>()
+    allExpenses.forEach((e) => {
+      if (e.expense_date) set.add(e.expense_date.slice(0, 7))
+    })
+    const arr = Array.from(set).sort().reverse()
+    return arr.length ? arr : [selectedMonth]
+  }, [allExpenses, selectedMonth])
+
+  const expensesByCategoryData = useMemo(() => {
+    const monthExpenses = allExpenses.filter((e) => e.expense_date?.startsWith(pieChartMonth))
+    const byCategory: Record<string, { name: string; value: number; color?: string }> = {}
+    monthExpenses.forEach((exp) => {
+      const catId = exp.category_id || 'sin-categoria'
+      const name = (exp as any).category?.name || (exp.is_unbudgeted ? 'No presupuestado' : 'Sin categoría')
+      byCategory[catId] = byCategory[catId] || { name, value: 0 }
+      byCategory[catId].value += Number(exp.amount) || 0
+    })
+    return Object.entries(byCategory).map(([_, v]) => v)
+  }, [allExpenses, pieChartMonth])
+
   const spendRows = useMemo(() => {
     const base = data?.spendByUser || []
     if (!includeFixedInPeople) return base
@@ -717,6 +758,122 @@ export default function DashboardPage() {
           )}
         </CardContent>
       </Card>
+
+      <div className="grid gap-3 sm:gap-4 md:grid-cols-2">
+        <Card className="rounded-xl border">
+          <CardHeader className="pb-2">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div>
+                <CardTitle className="text-base sm:text-lg">Gastos por Categoría</CardTitle>
+                <CardDescription>Distribución del gasto</CardDescription>
+              </div>
+              <Select value={pieChartMonth} onValueChange={setPieChartMonth}>
+                <SelectTrigger className="w-[160px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableMonths.map((month) => (
+                    <SelectItem key={month} value={month}>
+                      {formatMonth(month)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {expensesByCategoryData.length > 0 ? (
+              <div className="flex flex-col items-center">
+                <ResponsiveContainer width="100%" height={250}>
+                  <PieChart>
+                    <Pie
+                      data={expensesByCategoryData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={60}
+                      outerRadius={100}
+                      paddingAngle={2}
+                      dataKey="value"
+                      label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                      labelLine={false}
+                    >
+                      {expensesByCategoryData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color || PIE_COLORS[index % PIE_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      formatter={(value: number) => formatCurrency(value, currentHousehold?.currency)}
+                      contentStyle={{
+                        backgroundColor: 'var(--background)',
+                        border: '1px solid var(--border)',
+                        borderRadius: '8px',
+                      }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="flex flex-wrap justify-center gap-3 mt-2">
+                  {expensesByCategoryData.slice(0, 6).map((entry, index) => (
+                    <div key={index} className="flex items-center gap-1.5 text-xs">
+                      <div
+                        className="w-3 h-3 rounded-full"
+                        style={{ backgroundColor: entry.color || PIE_COLORS[index % PIE_COLORS.length] }}
+                      />
+                      <span>{entry.name}</span>
+                      <span className="text-muted-foreground">
+                        ({formatCurrency(entry.value, currentHousehold?.currency)})
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="h-[250px] flex items-center justify-center text-muted-foreground">
+                No hay gastos en {formatMonth(pieChartMonth)}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-xl border">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <CardTitle className="text-base sm:text-lg">Cumplimiento de Presupuesto</CardTitle>
+                <CardDescription className="text-xs sm:text-sm">
+                  Variable + no presupuestado vs. presupuesto variable
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Gastado</span>
+              <span className="font-semibold">{formatCurrency(totalSpent, currentHousehold?.currency)}</span>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Presupuesto</span>
+              <span className="font-semibold">{formatCurrency(totalBudget, currentHousehold?.currency)}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold">{budgetUsedPercent}%</span>
+              <div className="w-full h-2 rounded-full bg-muted">
+                <div
+                  className="h-2 rounded-full bg-primary"
+                  style={{ width: `${Math.min(budgetUsedPercent, 130)}%` }}
+                />
+              </div>
+              <span className="text-[11px] text-muted-foreground">Esperado {expectedPercent}%</span>
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {budgetUsedPercent > 100
+                ? '¡Ojo! Superaste el presupuesto variable.'
+                : budgetUsedPercent > expectedPercent
+                  ? 'Vas adelantado en el gasto.'
+                  : 'Dentro del ritmo esperado.'}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
       <div className="space-y-3 sm:space-y-4">
         <Card className="rounded-xl border">
