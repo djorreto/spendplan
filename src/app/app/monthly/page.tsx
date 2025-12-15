@@ -93,6 +93,7 @@ export default function MonthlyPage() {
   const [loading, setLoading] = useState(true)
   const [tableMonths, setTableMonths] = useState<7 | 13>(7)
   const [tableAnchorMonth, setTableAnchorMonth] = useState(selectedMonth || getCurrentMonth())
+  const [anchorMode, setAnchorMode] = useState<'center' | 'start'>('center') // center: ancla al medio; start: primer mes = anchor
   const [expandedVariables, setExpandedVariables] = useState<Set<string>>(new Set())
   const [expandedUnbudgeted, setExpandedUnbudgeted] = useState(false)
   const [editItem, setEditItem] = useState<BudgetItem | null>(null)
@@ -117,9 +118,12 @@ export default function MonthlyPage() {
 
   const monthsWindow = useMemo(() => {
     const anchorIdx = monthIndex(tableAnchorMonth)
-    const startIdx = Math.max(anchorIdx - Math.floor((tableMonths - 1) / 2), 0)
+    const startIdx =
+      anchorMode === 'center'
+        ? Math.max(anchorIdx - Math.floor((tableMonths - 1) / 2), 0)
+        : Math.max(anchorIdx, 0) // start mode: el primer mes es el ancla
     return Array.from({ length: tableMonths }, (_, i) => monthToString(startIdx + i).slice(0, 7))
-  }, [tableAnchorMonth, tableMonths])
+  }, [tableAnchorMonth, tableMonths, anchorMode])
 
   const shiftTableWindow = (delta: number) => {
     const nextIdx = monthIndex(tableAnchorMonth) + delta
@@ -127,6 +131,7 @@ export default function MonthlyPage() {
   }
 
   const anchorToCurrent = () => {
+    setAnchorMode('start')
     setTableAnchorMonth(getCurrentMonth())
   }
 
