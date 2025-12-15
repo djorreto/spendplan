@@ -1156,7 +1156,9 @@ export default function BudgetPage() {
       <div className="space-y-3 p-3 bg-muted/30 rounded-xl">
         {/* Fila 1: Ingresos - Fijos */}
         <div className="flex flex-col sm:flex-row sm:items-stretch gap-3">
-          <div className="flex sm:w-10 items-center justify-center text-xl font-bold text-muted-foreground">+</div>
+          <div className="flex sm:w-10 items-center justify-center">
+            <span className="px-2 py-1 text-xs font-semibold text-muted-foreground bg-muted rounded-full">+</span>
+          </div>
           <Card 
             className="flex-1 border-green-200 bg-green-50/60 cursor-pointer hover:border-green-400 hover:shadow-sm transition-all"
             onClick={() => setActiveTab('income')}
@@ -1168,7 +1170,9 @@ export default function BudgetPage() {
               </p>
             </CardContent>
           </Card>
-          <div className="flex sm:w-10 items-center justify-center text-xl font-bold text-muted-foreground">−</div>
+          <div className="flex sm:w-10 items-center justify-center">
+            <span className="px-2 py-1 text-xs font-semibold text-muted-foreground bg-muted rounded-full">−</span>
+          </div>
           <Card 
             className="flex-1 border-blue-200 bg-blue-50/60 cursor-pointer hover:border-blue-400 hover:shadow-sm transition-all"
             onClick={() => setActiveTab('fixed')}
@@ -1184,7 +1188,9 @@ export default function BudgetPage() {
 
         {/* Fila 2: Variables - No Presupuestados */}
         <div className="flex flex-col sm:flex-row sm:items-stretch gap-3">
-          <div className="flex sm:w-10 items-center justify-center text-xl font-bold text-muted-foreground">−</div>
+          <div className="flex sm:w-10 items-center justify-center">
+            <span className="px-2 py-1 text-xs font-semibold text-muted-foreground bg-muted rounded-full">−</span>
+          </div>
           <Card 
             className={`flex-1 cursor-pointer hover:shadow-sm transition-all ${
               totalVariableSpent > totalVariableBudget ? 'border-amber-400 bg-amber-50' : 'border-amber-200 bg-amber-50/70'
@@ -1201,7 +1207,9 @@ export default function BudgetPage() {
               </p>
             </CardContent>
           </Card>
-          <div className="flex sm:w-10 items-center justify-center text-xl font-bold text-muted-foreground">−</div>
+          <div className="flex sm:w-10 items-center justify-center">
+            <span className="px-2 py-1 text-xs font-semibold text-muted-foreground bg-muted rounded-full">−</span>
+          </div>
           <Card 
             className="flex-1 border-red-300 bg-red-50/80 cursor-pointer hover:border-red-500 hover:shadow-sm transition-all"
             onClick={() => setActiveTab('unbudgeted')}
@@ -1218,7 +1226,9 @@ export default function BudgetPage() {
 
         {/* Fila 3: Balance */}
         <div className="flex flex-col sm:flex-row sm:items-stretch gap-3">
-          <div className="flex sm:w-10 items-center justify-center text-xl font-bold text-muted-foreground">=</div>
+          <div className="flex sm:w-10 items-center justify-center">
+            <span className="px-2 py-1 text-xs font-semibold text-muted-foreground bg-muted rounded-full">=</span>
+          </div>
           <Card 
             className={`flex-1 border-2 cursor-pointer hover:shadow-sm transition-all ${
               availableReal < 0 
