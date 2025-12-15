@@ -119,7 +119,7 @@ export default function MonthlyPage() {
   )
 
   const monthlySummary = useMemo(() => {
-    const summary: Record<string, { income: number; fixed: number; varBudget: number; varSpent: number; unbudgeted: number; balance: number }> = {}
+    const summary: Record<string, { income: number; fixed: number; varBudget: number; varSpent: number; unbudgeted: number; balance: number; balancePlanned: number }> = {}
     monthsWindow.forEach((ym) => {
       const refDate = new Date(`${ym}-15`)
       const income = budgetItems
@@ -139,7 +139,8 @@ export default function MonthlyPage() {
         .filter((e) => e.is_unbudgeted || !e.category_id || !variableCategoryIds.has(e.category_id))
         .reduce((sum, e) => sum + (Number(e.amount) || 0), 0)
       const balance = income - fixed - varSpent - unbudgeted
-      summary[ym] = { income, fixed, varBudget, varSpent, unbudgeted, balance }
+      const balancePlanned = income - fixed - varBudget
+      summary[ym] = { income, fixed, varBudget, varSpent, unbudgeted, balance, balancePlanned }
     })
     return summary
   }, [monthsWindow, budgetItems, expensesByMonth, variableCategoryIds])
@@ -318,9 +319,14 @@ export default function MonthlyPage() {
                   </TableCell>
                   {monthsWindow.map((ym) => {
                     const active = isItemActiveByDate(item, new Date(`${ym}-15`))
+                    const summary = monthlySummary[ym]
+                    const budget = active ? getMonthlyAmount(item) : 0
+                    const spent = active ? (summary?.varSpent || 0) : 0
                     return (
                       <TableCell key={ym} className="text-right text-sm">
-                        {active ? formatCurrency(getMonthlyAmount(item), currentHousehold?.currency) : '—'}
+                        {active
+                          ? `${formatCurrency(spent, currentHousehold?.currency)} / ${formatCurrency(budget, currentHousehold?.currency)}`
+                          : '—'}
                       </TableCell>
                     )
                   })}
@@ -342,11 +348,30 @@ export default function MonthlyPage() {
                 ))}
               </TableRow>
 
-              {/* Balance */}
+              {/* Balance planificado */}
               <TableRow>
                 <TableCell className="whitespace-nowrap">
                   <div className="flex items-center gap-2">
-                    <span className="font-semibold">Balance</span>
+                    <span className="font-semibold">Balance planificado</span>
+                  </div>
+                </TableCell>
+                {monthsWindow.map((ym) => (
+                  <TableCell
+                    key={ym}
+                    className={`text-right text-sm ${
+                      monthlySummary[ym]?.balancePlanned < 0 ? 'text-red-700' : 'text-green-700'
+                    }`}
+                  >
+                    {monthlySummary[ym] ? formatCurrency(monthlySummary[ym].balancePlanned, currentHousehold?.currency) : '—'}
+                  </TableCell>
+                ))}
+              </TableRow>
+
+              {/* Balance real */}
+              <TableRow>
+                <TableCell className="whitespace-nowrap">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold">Balance real</span>
                   </div>
                 </TableCell>
                 {monthsWindow.map((ym) => (
