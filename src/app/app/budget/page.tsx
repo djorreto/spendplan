@@ -473,6 +473,9 @@ export default function BudgetPage() {
   const [chartMonthsFilter, setChartMonthsFilter] = useState(12) // Last N months
   const [pieChartMonth, setPieChartMonth] = useState(getCurrentMonth())
   const [complianceMonth, setComplianceMonth] = useState(getCurrentMonth())
+  useEffect(() => {
+    setTableAnchorMonth(selectedMonth || getCurrentMonth())
+  }, [selectedMonth])
 
   useEffect(() => {
     // Evitar “flash” a cero: solo cargar cuando existe household real o demo
@@ -502,6 +505,24 @@ export default function BudgetPage() {
       .lt('expense_date', rangeEndExclusive)
       .order('expense_date', { ascending: false })
     if (!error && data) setTableExpenses(data as Expense[])
+  }
+
+  const monthsWindow = useMemo(() => {
+    const anchorIdx = monthIndex(tableAnchorMonth)
+    const startIdx = Math.max(anchorIdx - Math.floor((tableMonths - 1) / 2), 0)
+    return Array.from({ length: tableMonths }, (_, i) => monthToString(startIdx + i).slice(0, 7))
+  }, [tableAnchorMonth, tableMonths])
+
+  const shiftTableWindow = (delta: number) => {
+    const nextIdx = monthIndex(tableAnchorMonth) + delta
+    setTableAnchorMonth(monthToString(Math.max(nextIdx, 0)).slice(0, 7))
+  }
+
+  const monthShortLabel = (ym: string) => {
+    const [y, m] = ym.split('-').map(Number)
+    const d = new Date(y, (m || 1) - 1, 1)
+    const abbr = d.toLocaleString('es-CL', { month: 'short' })
+    return `${abbr.charAt(0).toUpperCase() + abbr.slice(1, 3)}`
   }
 
   const loadData = async () => {
@@ -611,6 +632,41 @@ export default function BudgetPage() {
   const activeIncomes = filteredItems.filter(i => i.kind === 'income')
   const activeFixedExpenses = filteredItems.filter(i => i.kind === 'expense' && i.type === 'fixed')
   const activeVariableExpenses = filteredItems.filter(i => i.kind === 'expense' && i.type === 'variable')
+  const variableCategoryIds = useMemo(
+    () => new Set(activeVariableExpenses.map(i => i.category_id).filter(Boolean) as string[]),
+    [activeVariableExpenses]
+  )
+
+  const expensesByMonth = useMemo(() => {
+    const map = new Map<string, Expense[]>()
+    tableExpenses.forEach((e) => {
+      const ym = String(e.expense_date || '').slice(0, 7)
+      const arr = map.get(ym) || []
+      arr.push(e)
+      map.set(ym, arr)
+    })
+    return map
+  }, [tableExpenses])
+
+  const monthlySummary = useMemo(() => {
+    const summary: Record<string, { income: number; fixed: number; varBudget: number; varSpent: number; unbudgeted: number; balance: number }> = {}
+    monthsWindow.forEach((ym) => {
+      const refDate = new Date(`${ym}-15`)
+      const income = activeIncomes.reduce((sum, i) => sum + (isItemActiveByDate(i, refDate) ? getMonthlyAmount(i) : 0), 0)
+      const fixed = activeFixedExpenses.reduce((sum, i) => sum + (isItemActiveByDate(i, refDate) ? getMonthlyAmount(i) : 0), 0)
+      const varBudget = activeVariableExpenses.reduce((sum, i) => sum + (isItemActiveByDate(i, refDate) ? getMonthlyAmount(i) : 0), 0)
+      const monthExpenses = expensesByMonth.get(ym) || []
+      const varSpent = monthExpenses
+        .filter((e) => e.category_id && variableCategoryIds.has(e.category_id))
+        .reduce((sum, e) => sum + (Number(e.amount) || 0), 0)
+      const unbudgeted = monthExpenses
+        .filter((e) => e.is_unbudgeted || !e.category_id || !variableCategoryIds.has(e.category_id))
+        .reduce((sum, e) => sum + (Number(e.amount) || 0), 0)
+      const balance = income - fixed - varSpent - unbudgeted
+      summary[ym] = { income, fixed, varBudget, varSpent, unbudgeted, balance }
+    })
+    return summary
+  }, [monthsWindow, activeIncomes, activeFixedExpenses, activeVariableExpenses, expensesByMonth, variableCategoryIds])
 
   // Calculate totals (only from active items)
   const totalIncome = activeIncomes.filter(i => i.is_active).reduce((sum, i) => sum + getMonthlyAmount(i), 0)
@@ -1170,6 +1226,143 @@ export default function BudgetPage() {
           </Card>
         </div>
       </div>
+
+      {/* Vista mes a mes (7/13 meses) */}
+      <Card className="mt-4">
+        <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <CardTitle className="text-base sm:text-lg">Vista mes a mes</CardTitle>
+            <CardDescription>
+              {monthsWindow[0]} → {monthsWindow[monthsWindow.length - 1]}
+            </CardDescription>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={() => shiftTableWindow(-1)}>◀</Button>
+            <Button variant="outline" size="sm" onClick={() => shiftTableWindow(1)}>▶</Button>
+            <Button variant="outline" size="sm" onClick={() => setTableMonths(tableMonths === 7 ? 13 : 7)}>
+              {tableMonths === 7 ? 'Ver 13 meses' : 'Ver 7 meses'}
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="min-w-[160px]">Ítem</TableHead>
+                {monthsWindow.map((ym) => (
+                  <TableHead key={ym} className="text-right whitespace-nowrap">
+                    {monthShortLabel(ym)}/{ym.slice(2, 4)}
+                  </TableHead>
+                ))}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {/* Ingresos */}
+              {activeIncomes.map((item) => (
+                <TableRow key={item.id}>
+                  <TableCell className="whitespace-nowrap">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{item.name || 'Ingreso'}</span>
+                      <Badge variant="outline">Ingreso</Badge>
+                      <Button variant="ghost" size="icon" onClick={() => openEditItem(item)}>
+                        <Edit2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                  {monthsWindow.map((ym) => {
+                    const active = isItemActiveByDate(item, new Date(`${ym}-15`))
+                    return (
+                      <TableCell key={ym} className="text-right text-sm">
+                        {active ? formatCurrency(getMonthlyAmount(item), currentHousehold?.currency) : '—'}
+                      </TableCell>
+                    )
+                  })}
+                </TableRow>
+              ))}
+
+              {/* Fijos */}
+              {activeFixedExpenses.map((item) => (
+                <TableRow key={item.id}>
+                  <TableCell className="whitespace-nowrap">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{item.name || 'Gasto fijo'}</span>
+                      <Badge variant="outline">Fijo</Badge>
+                      <Button variant="ghost" size="icon" onClick={() => openEditItem(item)}>
+                        <Edit2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                  {monthsWindow.map((ym) => {
+                    const active = isItemActiveByDate(item, new Date(`${ym}-15`))
+                    return (
+                      <TableCell key={ym} className="text-right text-sm">
+                        {active ? formatCurrency(getMonthlyAmount(item), currentHousehold?.currency) : '—'}
+                      </TableCell>
+                    )
+                  })}
+                </TableRow>
+              ))}
+
+              {/* Variables */}
+              {activeVariableExpenses.map((item) => (
+                <TableRow key={item.id}>
+                  <TableCell className="whitespace-nowrap">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{item.name || 'Gasto variable'}</span>
+                      <Badge variant="outline">Variable</Badge>
+                      <Button variant="ghost" size="icon" onClick={() => openEditItem(item)}>
+                        <Edit2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                  {monthsWindow.map((ym) => {
+                    const active = isItemActiveByDate(item, new Date(`${ym}-15`))
+                    return (
+                      <TableCell key={ym} className="text-right text-sm">
+                        {active ? formatCurrency(getMonthlyAmount(item), currentHousehold?.currency) : '—'}
+                      </TableCell>
+                    )
+                  })}
+                </TableRow>
+              ))}
+
+              {/* No Presupuestados */}
+              <TableRow>
+                <TableCell className="whitespace-nowrap">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-red-700">No Presup.</span>
+                    <Badge variant="outline">Gastos</Badge>
+                  </div>
+                </TableCell>
+                {monthsWindow.map((ym) => (
+                  <TableCell key={ym} className="text-right text-sm text-red-700">
+                    {monthlySummary[ym] ? formatCurrency(monthlySummary[ym].unbudgeted, currentHousehold?.currency) : '—'}
+                  </TableCell>
+                ))}
+              </TableRow>
+
+              {/* Balance */}
+              <TableRow>
+                <TableCell className="whitespace-nowrap">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold">Balance</span>
+                  </div>
+                </TableCell>
+                {monthsWindow.map((ym) => (
+                  <TableCell
+                    key={ym}
+                    className={`text-right text-sm ${
+                      monthlySummary[ym]?.balance < 0 ? 'text-red-700' : 'text-green-700'
+                    }`}
+                  >
+                    {monthlySummary[ym] ? formatCurrency(monthlySummary[ym].balance, currentHousehold?.currency) : '—'}
+                  </TableCell>
+                ))}
+              </TableRow>
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
 
       {/* Main Content */}
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)}>
