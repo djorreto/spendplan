@@ -7,6 +7,17 @@ import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useHousehold } from '@/hooks/use-household'
 import { useSelectedMonth } from '@/hooks/use-selected-month'
@@ -83,6 +94,15 @@ export default function MonthlyPage() {
   const [tableMonths, setTableMonths] = useState<7 | 13>(7)
   const [tableAnchorMonth, setTableAnchorMonth] = useState(selectedMonth || getCurrentMonth())
   const [expandedVariables, setExpandedVariables] = useState<Set<string>>(new Set())
+  const [editItem, setEditItem] = useState<BudgetItem | null>(null)
+  const [editOpen, setEditOpen] = useState(false)
+  const [editSaving, setEditSaving] = useState(false)
+  const [editName, setEditName] = useState('')
+  const [editAmount, setEditAmount] = useState('')
+  const [editFrequency, setEditFrequency] = useState<Frequency>('monthly')
+  const [editStartDate, setEditStartDate] = useState('')
+  const [editEndDate, setEditEndDate] = useState('')
+  const [editIndefinite, setEditIndefinite] = useState(true)
 
   useEffect(() => {
     setTableAnchorMonth(selectedMonth || getCurrentMonth())
@@ -115,6 +135,52 @@ export default function MonthlyPage() {
       }
       return next
     })
+  }
+
+  const openInlineEdit = (item: BudgetItem) => {
+    setEditItem(item)
+    setEditName(item.name || '')
+    setEditAmount(String(item.amount ?? ''))
+    setEditFrequency(item.frequency as Frequency)
+    setEditStartDate(item.start_date?.slice(0, 10) || '')
+    setEditEndDate(item.end_date?.slice(0, 10) || '')
+    setEditIndefinite(!!item.is_indefinite)
+    setEditOpen(true)
+  }
+
+  const saveInlineEdit = async () => {
+    if (!editItem) return
+    if (!currentHousehold && !isDemoMode) return
+    setEditSaving(true)
+    const supabase = supabaseBrowser()
+    const op = startOp('monthly.inlineEdit', { id: editItem.id })
+    try {
+      const amountNum = Number(editAmount)
+      if (Number.isNaN(amountNum)) throw new Error('Monto inválido')
+      const { error } = await supabase
+        .from('budget_items')
+        .update({
+          name: editName || null,
+          amount: amountNum,
+          frequency: editFrequency,
+          start_date: editStartDate || null,
+          end_date: editIndefinite ? null : editEndDate || null,
+          is_indefinite: editIndefinite,
+        })
+        .eq('id', editItem.id)
+        .eq('household_id', currentHousehold?.id)
+      if (error) throw error
+      addToast({ type: 'success', message: 'Presupuesto actualizado' })
+      setEditOpen(false)
+      setEditItem(null)
+      await loadData()
+      endOp(op, true)
+    } catch (error) {
+      endOp(op, false, { error: formatSupabaseError(error) })
+      addToast({ type: 'error', message: 'No se pudo guardar' })
+    } finally {
+      setEditSaving(false)
+    }
   }
 
   const expensesByMonth = useMemo(() => {
@@ -281,7 +347,7 @@ export default function MonthlyPage() {
                     <div className="flex items-center gap-2">
                       <span className="font-medium">{item.name || 'Ingreso'}</span>
                       <Badge variant="outline">Ingreso</Badge>
-                      <Button variant="ghost" size="icon" onClick={() => router.push(`/app/budget?edit=${item.id}`)}>
+                      <Button variant="ghost" size="icon" onClick={() => openInlineEdit(item)}>
                         <Edit2 className="h-4 w-4" />
                       </Button>
                     </div>
@@ -304,7 +370,7 @@ export default function MonthlyPage() {
                     <div className="flex items-center gap-2">
                       <span className="font-medium">{item.name || 'Gasto fijo'}</span>
                       <Badge variant="outline">Fijo</Badge>
-                      <Button variant="ghost" size="icon" onClick={() => router.push(`/app/budget?edit=${item.id}`)}>
+                      <Button variant="ghost" size="icon" onClick={() => openInlineEdit(item)}>
                         <Edit2 className="h-4 w-4" />
                       </Button>
                     </div>
@@ -337,7 +403,7 @@ export default function MonthlyPage() {
                         </Button>
                         <span className="font-medium">{item.name || 'Gasto variable'}</span>
                         <Badge variant="outline">Variable</Badge>
-                        <Button variant="ghost" size="icon" onClick={() => router.push(`/app/budget?edit=${item.id}`)}>
+                        <Button variant="ghost" size="icon" onClick={() => openInlineEdit(item)}>
                           <Edit2 className="h-4 w-4" />
                         </Button>
                       </div>
@@ -459,6 +525,68 @@ export default function MonthlyPage() {
           </Table>
         </CardContent>
       </Card>
+
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar presupuesto</DialogTitle>
+            <DialogDescription>Actualiza el monto y fechas sin salir de la vista.</DialogDescription>
+          </DialogHeader>
+          {editItem && (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Nombre</Label>
+                <Input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Nombre" />
+              </div>
+              <div className="space-y-2">
+                <Label>Monto</Label>
+                <Input type="number" value={editAmount} onChange={(e) => setEditAmount(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Frecuencia</Label>
+                <select
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={editFrequency}
+                  onChange={(e) => setEditFrequency(e.target.value as Frequency)}
+                >
+                  <option value="monthly">Mensual</option>
+                  <option value="weekly">Semanal</option>
+                  <option value="biweekly">Quincenal</option>
+                  <option value="yearly">Anual</option>
+                  <option value="one_time">Único</option>
+                </select>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Inicio</Label>
+                  <Input type="date" value={editStartDate} onChange={(e) => setEditStartDate(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Fin</Label>
+                  <Input
+                    type="date"
+                    value={editEndDate}
+                    onChange={(e) => setEditEndDate(e.target.value)}
+                    disabled={editIndefinite}
+                  />
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Checkbox checked={editIndefinite} onCheckedChange={(v) => setEditIndefinite(!!v)} id="indef" />
+                <Label htmlFor="indef">Indefinido</Label>
+              </div>
+            </div>
+          )}
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setEditOpen(false)} disabled={editSaving}>
+              Cancelar
+            </Button>
+            <Button onClick={saveInlineEdit} disabled={editSaving}>
+              {editSaving ? 'Guardando...' : 'Guardar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Card className="mt-4">
         <CardContent>
