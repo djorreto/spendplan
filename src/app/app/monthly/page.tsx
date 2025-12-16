@@ -30,6 +30,8 @@ import { Edit2, ChevronLeft, ChevronRight } from 'lucide-react'
 
 type Frequency = 'monthly' | 'weekly' | 'biweekly' | 'yearly' | 'one_time'
 
+const formatWithDots = (digits: string) => digits.replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+
 function isItemActiveByDate(item: BudgetItem, referenceDate: Date = new Date()): boolean {
   const startDate = new Date(item.start_date)
 
@@ -101,6 +103,7 @@ export default function MonthlyPage() {
   const [editSaving, setEditSaving] = useState(false)
   const [editName, setEditName] = useState('')
   const [editAmount, setEditAmount] = useState('')
+  const [editAmountText, setEditAmountText] = useState('')
   const [editFrequency, setEditFrequency] = useState<Frequency>('monthly')
   const [editStartDate, setEditStartDate] = useState('')
   const [editEndDate, setEditEndDate] = useState('')
@@ -150,7 +153,9 @@ export default function MonthlyPage() {
   const openInlineEdit = (item: BudgetItem) => {
     setEditItem(item)
     setEditName(item.name || '')
-    setEditAmount(String(item.amount ?? ''))
+    const digits = String(Math.round(item.amount ?? 0)).replace(/\D/g, '')
+    setEditAmount(digits)
+    setEditAmountText(digits ? formatWithDots(digits) : '')
     setEditFrequency(item.frequency as Frequency)
     setEditStartDate(item.start_date?.slice(0, 10) || '')
     setEditEndDate(item.end_date?.slice(0, 10) || '')
@@ -165,7 +170,7 @@ export default function MonthlyPage() {
     const supabase = supabaseBrowser()
     const op = startOp('monthly.inlineEdit', { id: editItem.id })
     try {
-      const amountNum = Number(editAmount)
+      const amountNum = Number((editAmount || '').replace(/\D/g, ''))
       if (Number.isNaN(amountNum)) throw new Error('Monto inválido')
       const { error } = await supabase
         .from('budget_items')
@@ -626,7 +631,16 @@ export default function MonthlyPage() {
               </div>
               <div className="space-y-2">
                 <Label>Monto</Label>
-                <Input type="number" value={editAmount} onChange={(e) => setEditAmount(e.target.value)} />
+                <Input
+                  type="text"
+                  inputMode="numeric"
+                  value={editAmountText}
+                  onChange={(e) => {
+                    const digits = e.target.value.replace(/\D/g, '')
+                    setEditAmountText(digits ? formatWithDots(digits) : '')
+                    setEditAmount(digits)
+                  }}
+                />
               </div>
               <div className="space-y-2">
                 <Label>Frecuencia</Label>

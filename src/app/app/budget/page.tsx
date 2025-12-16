@@ -1,3 +1,19 @@
+  const formatWithDots = (digits: string) => digits.replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+
+  const handleAmountChange = (raw: string) => {
+    const digits = raw.replace(/\D/g, '')
+    const num = digits ? parseInt(digits, 10) : 0
+    setFormAmountText(digits ? formatWithDots(digits) : '')
+    setFormData({ ...formData, amount: num })
+  }
+
+  const handleExpenseAmountChange = (raw: string) => {
+    const digits = raw.replace(/\D/g, '')
+    const num = digits ? parseFloat(digits) : 0
+    setExpenseAmountText(digits ? formatWithDots(digits) : '')
+    setExpenseForm({ ...expenseForm, amount: num })
+  }
+
 'use client'
 
 export const dynamic = 'force-dynamic'
@@ -461,6 +477,8 @@ export default function BudgetPage() {
   const [savingsGoalLocal, setSavingsGoalLocal] = useState<number | null>(null)
   const [savingsGoalInput, setSavingsGoalInput] = useState('')
   const [savingGoal, setSavingGoal] = useState(false)
+  const [formAmountText, setFormAmountText] = useState('')
+  const [expenseAmountText, setExpenseAmountText] = useState('')
   const [conflictItems, setConflictItems] = useState<BudgetItem[]>([])
   const [conflictDialogOpen, setConflictDialogOpen] = useState(false)
   
@@ -633,7 +651,8 @@ export default function BudgetPage() {
   useEffect(() => {
     const goal = Number(currentHousehold?.settings?.savings_goal) || 0
     setSavingsGoalLocal(goal)
-    setSavingsGoalInput(goal ? String(goal) : '')
+    const digits = goal ? String(Math.round(goal)).replace(/\D/g, '') : ''
+    setSavingsGoalInput(digits ? formatWithDots(digits) : '')
   }, [currentHousehold])
 
   // Filter items
@@ -729,7 +748,8 @@ export default function BudgetPage() {
       addToast({ type: 'error', message: 'Selecciona un hogar para guardar el objetivo.' })
       return
     }
-    const parsed = Number((savingsGoalInput || '').replace(',', '.'))
+    const digits = (savingsGoalInput || '').replace(/\D/g, '')
+    const parsed = digits ? Number(digits) : 0
     if (isNaN(parsed) || parsed < 0) {
       addToast({ type: 'error', message: 'Ingresa un monto válido (0 o más).' })
       return
@@ -790,6 +810,7 @@ export default function BudgetPage() {
       is_installment: false,
       total_installments: undefined,
     })
+    setFormAmountText('')
     setDialogOpen(true)
   }
 
@@ -800,6 +821,8 @@ export default function BudgetPage() {
     }
     setEditingItem(item)
     setFormData({ ...item })
+    const digits = String(Math.round(item.amount || 0)).replace(/\D/g, '')
+    setFormAmountText(digits ? formatWithDots(digits) : '')
     setDialogOpen(true)
   }
 
@@ -971,6 +994,7 @@ export default function BudgetPage() {
       notes: '',
       date: new Date().toISOString().split('T')[0],
     })
+    setExpenseAmountText('')
     setExpenseDialogOpen(true)
   }
 
@@ -1599,12 +1623,15 @@ export default function BudgetPage() {
                   <Label htmlFor="savingsGoal">Ahorro objetivo</Label>
                   <Input
                     id="savingsGoal"
-                    type="number"
-                    min={0}
-                    step="1000"
-                    placeholder="Ej: 200000"
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="Ej: 1.500.000"
                     value={savingsGoalInput}
-                    onChange={(e) => setSavingsGoalInput(e.target.value)}
+                    onChange={(e) => {
+                      const digits = e.target.value.replace(/\D/g, '')
+                      const formatted = digits ? formatWithDots(digits) : ''
+                      setSavingsGoalInput(formatted)
+                    }}
                   />
                   <p className="text-xs text-muted-foreground">
                     Se compara contra tu balance real (ingresos − fijos − variables reales − no presupuestados).
@@ -1955,10 +1982,11 @@ export default function BudgetPage() {
               <div className="space-y-2">
                 <Label>Monto *</Label>
                   <Input
-                    type="number"
-                  placeholder="0"
-                  value={formData.amount || ''}
-                  onChange={(e) => setFormData({ ...formData, amount: parseFloat(e.target.value) || 0 })}
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="0"
+                    value={formAmountText}
+                    onChange={(e) => handleAmountChange(e.target.value)}
                   />
                 </div>
               <div className="space-y-2">
@@ -2156,13 +2184,14 @@ export default function BudgetPage() {
 
               <div className="space-y-2">
                 <Label>Monto gastado *</Label>
-                    <Input
-                      type="number"
-                      placeholder="0"
-                  value={expenseForm.amount || ''}
-                  onChange={(e) => setExpenseForm({ ...expenseForm, amount: parseFloat(e.target.value) || 0 })}
+                <Input
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="0"
+                  value={expenseAmountText}
+                  onChange={(e) => handleExpenseAmountChange(e.target.value)}
                   autoFocus
-                    />
+                />
                   </div>
 
               <div className="space-y-2">
