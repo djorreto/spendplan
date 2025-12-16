@@ -58,6 +58,8 @@ export interface HouseholdSettings {
   notifications?: boolean
   csv_date_format?: string
   csv_amount_column?: string
+  // Meta de ahorro mensual (se guarda como número decimal)
+  savings_goal?: number
 }
 
 // ========================================

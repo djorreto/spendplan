@@ -429,7 +429,7 @@ export default function BudgetPage() {
   
   // View state
   const [currentMonth] = useState(getCurrentMonth())
-  const [activeTab, setActiveTab] = useState<'overview' | 'income' | 'fixed' | 'variable' | 'unbudgeted' | 'balance'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'income' | 'fixed' | 'variable' | 'unbudgeted' | 'balance' | 'savings'>('overview')
   const [expandedBalanceRows, setExpandedBalanceRows] = useState<Set<string>>(new Set())
   
   // Dialog state
@@ -458,6 +458,9 @@ export default function BudgetPage() {
   const [tableMonths, setTableMonths] = useState<7 | 13>(7)
   const [tableAnchorMonth, setTableAnchorMonth] = useState(getCurrentMonth())
   const [tableExpenses, setTableExpenses] = useState<Expense[]>([])
+  const [savingsGoalLocal, setSavingsGoalLocal] = useState<number | null>(null)
+  const [savingsGoalInput, setSavingsGoalInput] = useState('')
+  const [savingGoal, setSavingGoal] = useState(false)
   const [conflictItems, setConflictItems] = useState<BudgetItem[]>([])
   const [conflictDialogOpen, setConflictDialogOpen] = useState(false)
   
@@ -626,6 +629,13 @@ export default function BudgetPage() {
     }
   }
 
+  // Sincronizar objetivo de ahorro local con settings del hogar
+  useEffect(() => {
+    const goal = Number(currentHousehold?.settings?.savings_goal) || 0
+    setSavingsGoalLocal(goal)
+    setSavingsGoalInput(goal ? String(goal) : '')
+  }, [currentHousehold])
+
   // Filter items
   const filteredItems = useMemo(() => {
     return budgetItems.filter(item => item.is_active)
@@ -696,6 +706,9 @@ export default function BudgetPage() {
   const totalRealSpent = totalFixed + totalVariableSpent + totalUnbudgeted // Fijos + Variables reales + No presupuestados
   const availableReal = totalIncome - totalRealSpent
   const isWithinBudget = totalVariableSpent <= totalVariableBudget && totalUnbudgeted === 0
+  const savingsGoal = savingsGoalLocal ?? Number(currentHousehold?.settings?.savings_goal || 0)
+  const savingsActual = Math.max(availableReal, 0)
+  const savingsOk = savingsActual >= savingsGoal && savingsGoal > 0
 
   // Get categories already used in variable expenses (to prevent duplicates)
   const usedVariableCategoryIds = useMemo(() => {
@@ -709,6 +722,36 @@ export default function BudgetPage() {
   const availableCategoriesForVariable = useMemo(() => {
     return categories.filter(c => !usedVariableCategoryIds.includes(c.id))
   }, [categories, usedVariableCategoryIds])
+
+  // Guardar objetivo de ahorro
+  const handleSaveSavingsGoal = async () => {
+    if (!currentHousehold) {
+      addToast({ type: 'error', message: 'Selecciona un hogar para guardar el objetivo.' })
+      return
+    }
+    const parsed = Number((savingsGoalInput || '').replace(',', '.'))
+    if (isNaN(parsed) || parsed < 0) {
+      addToast({ type: 'error', message: 'Ingresa un monto válido (0 o más).' })
+      return
+    }
+    try {
+      setSavingGoal(true)
+      const supabase = supabaseBrowser()
+      const newSettings = { ...(currentHousehold.settings || {}), savings_goal: parsed }
+      const { error } = await supabase
+        .from('households')
+        .update({ settings: newSettings })
+        .eq('id', currentHousehold.id)
+      if (error) throw error
+      setSavingsGoalLocal(parsed)
+      addToast({ type: 'success', message: 'Objetivo de ahorro guardado.' })
+    } catch (error) {
+      console.error(error)
+      addToast({ type: 'error', message: 'No se pudo guardar el objetivo.' })
+    } finally {
+      setSavingGoal(false)
+    }
+  }
 
   // ========== CHART DATA ==========
   
@@ -1085,6 +1128,12 @@ export default function BudgetPage() {
               <span className="flex items-center gap-2">
                 <Wallet className="h-4 w-4" />
                 Balance
+              </span>
+            </TabsTrigger>
+            <TabsTrigger value="savings" className="text-sm px-3 py-2 whitespace-nowrap">
+              <span className="flex items-center gap-2">
+                🎯
+                Ahorro
               </span>
             </TabsTrigger>
           </TabsList>
@@ -1525,6 +1574,57 @@ export default function BudgetPage() {
               )}
           </CardContent>
         </Card>
+        </TabsContent>
+
+        {/* Ahorro - Objetivo mensual */}
+        <TabsContent value="savings" className="mt-4">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-xl flex items-center gap-2">
+                🎯 Objetivo de ahorro mensual
+              </CardTitle>
+              <CardDescription>
+                Define cuánto quieres ahorrar del balance mensual. Si el balance alcanza el objetivo, verás “¡Vamos bien!”.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="savingsGoal">Ahorro objetivo</Label>
+                  <Input
+                    id="savingsGoal"
+                    type="number"
+                    min={0}
+                    step="1000"
+                    placeholder="Ej: 200000"
+                    value={savingsGoalInput}
+                    onChange={(e) => setSavingsGoalInput(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Se compara contra tu balance real (ingresos − fijos − variables reales − no presupuestados).
+                  </p>
+                  <Button onClick={handleSaveSavingsGoal} disabled={savingGoal} className="w-full md:w-auto">
+                    {savingGoal ? 'Guardando...' : 'Guardar objetivo'}
+                  </Button>
+                </div>
+                <div className="space-y-2 rounded-lg border p-3 bg-muted/40">
+                  <p className="text-sm text-muted-foreground">Ahorro actual vs objetivo</p>
+                  <p className="text-lg font-bold">
+                    {formatCurrency(savingsActual, currentHousehold?.currency)} / {formatCurrency(savingsGoal, currentHousehold?.currency)}
+                  </p>
+                  {savingsGoal > 0 ? (
+                    <p className={`text-sm font-semibold ${savingsOk ? 'text-green-700' : 'text-amber-700'}`}>
+                      {savingsOk
+                        ? '¡Vamos bien!'
+                        : 'Rayos, hay que revisar los gastos o ajustar los objetivos'}
+                    </p>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">Define un objetivo para ver el estado.</p>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* Balance Tab - Income Statement Style with Expandable Rows */}

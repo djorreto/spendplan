@@ -663,6 +663,9 @@ export default function DashboardPage() {
   }
   
   const status = getStatus()
+  const savingsGoal = currentHousehold?.settings?.savings_goal || 0
+  const savingsActual = Math.max(data?.availableReal || 0, 0)
+  const savingsOk = savingsActual >= savingsGoal && savingsGoal > 0
   const StatusIcon = status.icon
 
   const hasBudget = totalBudget > 0
@@ -756,6 +759,44 @@ export default function DashboardPage() {
               >
                 {formatCurrency(data?.availableReal || 0, currentHousehold?.currency)}
               </p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Ahorro vs objetivo */}
+        <div className="relative">
+          <span className="absolute -left-2 top-3 px-2 py-1 text-[11px] font-semibold text-muted-foreground bg-muted rounded-full shadow-sm">🎯</span>
+          <Card
+            className={`border-2 ${
+              savingsGoal === 0
+                ? 'border-muted bg-muted/50'
+                : savingsOk
+                ? 'border-green-500 bg-green-100'
+                : 'border-amber-500 bg-amber-50'
+            }`}
+          >
+            <CardContent className="p-3 sm:p-4 text-center space-y-1">
+              <p className="text-xs font-medium text-muted-foreground">Ahorro vs objetivo</p>
+              <p className="text-base lg:text-lg font-bold text-foreground">
+                {formatCurrency(savingsActual, currentHousehold?.currency)} /{' '}
+                {formatCurrency(savingsGoal, currentHousehold?.currency)}
+              </p>
+              {savingsGoal > 0 && (
+                <p
+                  className={`text-xs font-semibold ${
+                    savingsOk ? 'text-green-700' : 'text-amber-700'
+                  }`}
+                >
+                  {savingsOk
+                    ? '¡Vamos bien!'
+                    : 'Rayos, hay que revisar los gastos o ajustar los objetivos'}
+                </p>
+              )}
+              {savingsGoal === 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Define tu objetivo de ahorro en Presupuesto &gt; Ahorro.
+                </p>
+              )}
             </CardContent>
           </Card>
         </div>
