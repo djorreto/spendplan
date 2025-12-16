@@ -1213,7 +1213,13 @@ export default function BudgetPage() {
                   <span className={availableReal >= 0 ? 'text-green-600' : 'text-destructive'}>
                     {formatCurrency(availableReal, currentHousehold?.currency)}
                   </span>
-            </div>
+              </div>
+              <div className="flex justify-between items-center py-2 font-semibold text-base border-t">
+                <span>Ahorro a la fecha</span>
+                <span className={savingsActual >= 0 ? 'text-green-600' : 'text-destructive'}>
+                  {formatCurrency(savingsActual, currentHousehold?.currency)}
+                </span>
+              </div>
           </CardContent>
         </Card>
 

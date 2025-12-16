@@ -586,6 +586,27 @@ export default function MonthlyPage() {
                   </TableCell>
                 ))}
               </TableRow>
+
+              {/* Ahorro a la fecha */}
+              <TableRow>
+                <TableCell className="whitespace-nowrap">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold">Ahorro a la fecha</span>
+                  </div>
+                </TableCell>
+                {monthsWindow.map((ym) => (
+                  <TableCell
+                    key={ym}
+                    className={`text-right text-xs sm:text-sm ${
+                      Math.max(monthlySummary[ym]?.balance || 0, 0) > 0 ? 'text-green-700' : 'text-red-700'
+                    }`}
+                  >
+                    {monthlySummary[ym]
+                      ? formatCurrency(Math.max(monthlySummary[ym].balance, 0), currentHousehold?.currency)
+                      : '—'}
+                  </TableCell>
+                ))}
+              </TableRow>
             </TableBody>
           </Table>
         </CardContent>
