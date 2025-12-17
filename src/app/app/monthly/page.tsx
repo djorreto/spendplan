@@ -355,7 +355,10 @@ export default function MonthlyPage() {
         return
       }
       const isFuture = ym > currentYm
+      const isCurrent = ym === currentYm
       const chosen = isFuture ? base.balancePlanned : base.balance
+      // En el mes actual usamos balance real, en futuros balance planificado
+      // (pasado también mantiene balance real acumulado).
       acc += chosen
       res[ym] = acc
     })
@@ -931,9 +934,14 @@ export default function MonthlyPage() {
 
       <Card className="mt-4">
         <CardContent>
-          <p className="text-sm text-muted-foreground">
-            Usa “Ver 7/13 meses” para cambiar la ventana. Los montos de variables y no presupuestados se calculan con los gastos reales de cada mes.
-          </p>
+          <div className="space-y-1 text-sm text-muted-foreground">
+            <p>
+              Usa “Ver 7/13 meses” para cambiar la ventana. Los montos de variables y no presupuestados se calculan con los gastos reales de cada mes.
+            </p>
+            <p>
+              Nota: el “Ahorro acumulado” suma el balance real hasta el mes actual; para meses futuros se suma el balance planificado.
+            </p>
+          </div>
         </CardContent>
       </Card>
     </div>
