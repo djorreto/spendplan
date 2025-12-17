@@ -469,8 +469,8 @@ export default function MonthlyPage() {
             Ventana: {monthsWindow[0]} → {monthsWindow[monthsWindow.length - 1]}
           </CardDescription>
         </CardHeader>
-        <CardContent className="overflow-x-auto">
-          <Table>
+        <CardContent className="relative max-h-[70vh] overflow-auto">
+          <Table className="min-w-full">
             <TableHeader className="sticky top-0 z-20 bg-background shadow-sm">
               <TableRow>
                 <TableHead className="min-w-[140px] sm:min-w-[180px] text-xs sm:text-sm sticky top-0 z-30 bg-background">
