@@ -764,18 +764,22 @@ export default function MonthlyPage() {
                     <span className="font-semibold">Ahorro a la fecha</span>
                   </div>
                 </TableCell>
-                {monthsWindow.map((ym) => (
-                  <TableCell
-                    key={ym}
-                    className={`text-right text-xs sm:text-sm ${
-                      Math.max(monthlySummary[ym]?.balance || 0, 0) > 0 ? 'text-green-700' : 'text-red-700'
-                    }`}
-                  >
-                    {monthlySummary[ym]
-                      ? formatCurrency(Math.max(monthlySummary[ym].balance, 0), currentHousehold?.currency)
-                      : '—'}
-                  </TableCell>
-                ))}
+                {monthsWindow.map((ym) => {
+                  const isFuture = ym > getCurrentMonth()
+                  const val = monthlySummary[ym]
+                    ? isFuture
+                      ? monthlySummary[ym].balancePlanned
+                      : monthlySummary[ym].balance
+                    : 0
+                  return (
+                    <TableCell
+                      key={ym}
+                      className={`text-right text-xs sm:text-sm ${val >= 0 ? 'text-green-700' : 'text-red-700'}`}
+                    >
+                      {monthlySummary[ym] ? formatCurrency(val, currentHousehold?.currency) : '—'}
+                    </TableCell>
+                  )
+                })}
               </TableRow>
 
               {/* Ahorro acumulado */}
@@ -939,7 +943,7 @@ export default function MonthlyPage() {
               Usa “Ver 7/13 meses” para cambiar la ventana. Los montos de variables y no presupuestados se calculan con los gastos reales de cada mes.
             </p>
             <p>
-              Nota: el “Ahorro acumulado” usa balance real hasta el mes actual; desde el mes siguiente en adelante usa el balance planificado.
+              Nota: “Ahorro a la fecha” y “Ahorro acumulado” usan balance real hasta el mes actual; desde el mes siguiente en adelante usan el balance planificado.
             </p>
           </div>
         </CardContent>
