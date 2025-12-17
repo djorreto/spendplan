@@ -119,6 +119,7 @@ export default function MonthlyPage() {
   const [editExpenseDate, setEditExpenseDate] = useState('')
   const [editExpenseDesc, setEditExpenseDesc] = useState('')
   const [editExpenseMerchant, setEditExpenseMerchant] = useState('')
+  const [editExpenseCategory, setEditExpenseCategory] = useState<string>('')
 
   useEffect(() => {
     setTableAnchorMonth(selectedMonth || getCurrentMonth())
@@ -181,6 +182,7 @@ export default function MonthlyPage() {
     setEditExpenseDate(String(exp.expense_date).slice(0, 10))
     setEditExpenseDesc(exp.description || exp.merchant || '')
     setEditExpenseMerchant(exp.merchant || '')
+    setEditExpenseCategory(exp.category_id || '')
     setEditExpenseOpen(true)
   }
 
@@ -202,7 +204,8 @@ export default function MonthlyPage() {
           expense_date: editExpenseDate || editExpense.expense_date,
           description: editExpenseDesc || null,
           merchant: editExpenseMerchant || null,
-          is_unbudgeted: false, // si tiene categoría, no se marca como no presupuestado
+          category_id: editExpenseCategory || null,
+          is_unbudgeted: editExpenseCategory ? false : true, // si asigna categoría, deja de ser no presupuestado
         })
         .eq('id', editExpense.id)
         .eq('household_id', currentHousehold?.id)
@@ -828,6 +831,23 @@ export default function MonthlyPage() {
             <div className="space-y-1">
               <Label>Comercio</Label>
               <Input value={editExpenseMerchant} onChange={(e) => setEditExpenseMerchant(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label>Categoría</Label>
+              <select
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                value={editExpenseCategory}
+                onChange={(e) => setEditExpenseCategory(e.target.value)}
+              >
+                <option value="">Sin categoría</option>
+                {categories
+                  .filter((c) => c.is_active !== false)
+                  .map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+              </select>
             </div>
           </div>
           <DialogFooter>
