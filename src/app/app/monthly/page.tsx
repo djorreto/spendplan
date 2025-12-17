@@ -471,11 +471,16 @@ export default function MonthlyPage() {
         </CardHeader>
         <CardContent className="overflow-x-auto">
           <Table>
-            <TableHeader>
+            <TableHeader className="sticky top-0 z-20 bg-background shadow-sm">
               <TableRow>
-                <TableHead className="min-w-[140px] sm:min-w-[180px] text-xs sm:text-sm">Ítem</TableHead>
+                <TableHead className="min-w-[140px] sm:min-w-[180px] text-xs sm:text-sm sticky top-0 z-30 bg-background">
+                  Ítem
+                </TableHead>
                 {monthsWindow.map((ym) => (
-                  <TableHead key={ym} className="text-right whitespace-nowrap text-xs sm:text-sm">
+                  <TableHead
+                    key={ym}
+                    className="text-right whitespace-nowrap text-xs sm:text-sm sticky top-0 z-30 bg-background"
+                  >
                     {monthShortLabel(ym)}/{ym.slice(2, 4)}
                   </TableHead>
                 ))}
