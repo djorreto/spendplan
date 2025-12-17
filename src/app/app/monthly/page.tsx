@@ -256,7 +256,7 @@ export default function MonthlyPage() {
   const expensesByMonth = useMemo(() => {
     const map = new Map<string, Expense[]>()
     expenses.forEach((e) => {
-      const ym = String(e.expense_date || '').slice(0, 7)
+      const ym = parseDateUTC(e.expense_date).toISOString().slice(0, 7)
       const arr = map.get(ym) || []
       arr.push(e)
       map.set(ym, arr)
@@ -530,9 +530,14 @@ export default function MonthlyPage() {
                     <TableRow key={`${item.id}-details`} className="bg-muted/40">
                       <TableCell className="text-sm font-medium text-muted-foreground">Gastos reales</TableCell>
                       {monthsWindow.map((ym) => {
-                        const cellExpenses = expenses
-                          .filter((e) => e.category_id === item.category_id && String(e.expense_date).startsWith(ym))
-                          .sort((a, b) => (a.expense_date > b.expense_date ? -1 : 1))
+                    const cellExpenses = expenses
+                      .filter((e) => {
+                        if (e.is_unbudgeted) return false
+                        if (e.category_id !== item.category_id) return false
+                        const ymExpense = parseDateUTC(e.expense_date).toISOString().slice(0, 7)
+                        return ymExpense === ym
+                      })
+                      .sort((a, b) => (a.expense_date > b.expense_date ? -1 : 1))
                         return (
                           <TableCell key={`${item.id}-${ym}`} className="align-top text-xs sm:text-sm">
                             {cellExpenses.length === 0 ? (
@@ -597,7 +602,12 @@ export default function MonthlyPage() {
                   <TableCell className="text-sm font-medium text-muted-foreground">Gastos reales</TableCell>
                   {monthsWindow.map((ym) => {
                     const cellExpenses = expenses
-                      .filter((e) => (!e.category_id || !variableCategoryIds.has(e.category_id) || e.is_unbudgeted) && String(e.expense_date).startsWith(ym))
+                      .filter((e) => {
+                        const hasVarCat = e.category_id && variableCategoryIds.has(e.category_id)
+                        if (hasVarCat && !e.is_unbudgeted) return false
+                        const ymExpense = parseDateUTC(e.expense_date).toISOString().slice(0, 7)
+                        return ymExpense === ym
+                      })
                       .sort((a, b) => (a.expense_date > b.expense_date ? -1 : 1))
                     return (
                       <TableCell key={`unb-${ym}`} className="align-top text-xs sm:text-sm">
@@ -614,7 +624,7 @@ export default function MonthlyPage() {
                                   <Button
                                     variant="ghost"
                                     size="icon"
-                                    onClick={() => router.push(`/app/expenses?edit=${exp.id}`)}
+                                    onClick={() => openEditExpenseCard(exp)}
                                     aria-label="Editar gasto"
                                   >
                                     <Edit2 className="h-4 w-4" />
