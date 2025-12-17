@@ -26,7 +26,7 @@ import { formatCurrency, getCurrentMonth } from '@/lib/utils'
 import { startOp, endOp, formatSupabaseError, withRetry } from '@/lib/debug-log'
 import { useToast } from '@/components/ui/toast'
 import type { BudgetItem, Expense, Category } from '@/types'
-import { Edit2, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Edit2, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react'
 
 type Frequency = 'monthly' | 'weekly' | 'biweekly' | 'yearly' | 'one_time'
 
@@ -120,6 +120,7 @@ export default function MonthlyPage() {
   const [editExpenseDesc, setEditExpenseDesc] = useState('')
   const [editExpenseMerchant, setEditExpenseMerchant] = useState('')
   const [editExpenseCategory, setEditExpenseCategory] = useState<string>('')
+  const [deleteLoadingId, setDeleteLoadingId] = useState<string | null>(null)
 
   useEffect(() => {
     setTableAnchorMonth(selectedMonth || getCurrentMonth())
@@ -218,6 +219,31 @@ export default function MonthlyPage() {
     } catch (error) {
       endOp(op, false, { error: formatSupabaseError(error) })
       addToast({ type: 'error', message: 'No se pudo actualizar el gasto' })
+    }
+  }
+
+  const deleteExpense = async (exp: Expense) => {
+    if (!currentHousehold) return
+    const confirmDelete = typeof window !== 'undefined' ? window.confirm('¿Eliminar este gasto?') : true
+    if (!confirmDelete) return
+    const supabase = supabaseBrowser()
+    const op = startOp('monthly.deleteExpense', { id: exp.id })
+    setDeleteLoadingId(exp.id)
+    try {
+      const { error } = await supabase
+        .from('expenses')
+        .delete()
+        .eq('id', exp.id)
+        .eq('household_id', currentHousehold.id)
+      if (error) throw error
+      addToast({ type: 'success', message: 'Gasto eliminado' })
+      await loadData()
+      endOp(op, true)
+    } catch (error) {
+      endOp(op, false, { error: formatSupabaseError(error) })
+      addToast({ type: 'error', message: 'No se pudo eliminar el gasto' })
+    } finally {
+      setDeleteLoadingId(null)
     }
   }
 
@@ -568,14 +594,25 @@ export default function MonthlyPage() {
                                       <span className="text-xs sm:text-sm font-semibold">
                                         {formatCurrency(Number(exp.amount) || 0, currentHousehold?.currency)}
                                       </span>
-                                      <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        onClick={() => openEditExpenseCard(exp)}
-                                        aria-label="Editar gasto"
-                                      >
-                                        <Edit2 className="h-4 w-4" />
-                                      </Button>
+                                  <div className="flex items-center gap-1">
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={() => openEditExpenseCard(exp)}
+                                      aria-label="Editar gasto"
+                                    >
+                                      <Edit2 className="h-4 w-4" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={() => deleteExpense(exp)}
+                                      aria-label="Eliminar gasto"
+                                      disabled={deleteLoadingId === exp.id}
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </div>
                                     </div>
                                     <p className="text-[11px] sm:text-xs text-muted-foreground">
                                       {String(exp.expense_date).slice(0, 10)} • {exp.description || exp.merchant || 'Gasto'}
@@ -641,14 +678,25 @@ export default function MonthlyPage() {
                                   <span className="text-xs sm:text-sm font-semibold">
                                     {formatCurrency(Number(exp.amount) || 0, currentHousehold?.currency)}
                                   </span>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={() => openEditExpenseCard(exp)}
-                                    aria-label="Editar gasto"
-                                  >
-                                    <Edit2 className="h-4 w-4" />
-                                  </Button>
+                                  <div className="flex items-center gap-1">
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={() => openEditExpenseCard(exp)}
+                                      aria-label="Editar gasto"
+                                    >
+                                      <Edit2 className="h-4 w-4" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={() => deleteExpense(exp)}
+                                      aria-label="Eliminar gasto"
+                                      disabled={deleteLoadingId === exp.id}
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </div>
                                 </div>
                                 <p className="text-[11px] sm:text-xs text-muted-foreground">
                                   {String(exp.expense_date).slice(0, 10)} • {exp.description || exp.merchant || 'Gasto'}
