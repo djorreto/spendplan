@@ -119,9 +119,6 @@ export default function MonthlyPage() {
   const [editExpenseDate, setEditExpenseDate] = useState('')
   const [editExpenseDesc, setEditExpenseDesc] = useState('')
   const [editExpenseMerchant, setEditExpenseMerchant] = useState('')
-  const [editExpenseOpen, setEditExpenseOpen] = useState(false)
-  const [editExpense, setEditExpense] = useState<any | null>(null)
-  const [editExpenseAmountText, setEditExpenseAmountText] = useState('')
 
   useEffect(() => {
     setTableAnchorMonth(selectedMonth || getCurrentMonth())
