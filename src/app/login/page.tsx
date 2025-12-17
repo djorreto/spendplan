@@ -81,8 +81,8 @@ export default function LoginPage() {
           setMode('login')
         }
       } else if (mode === 'signup') {
-        if (!password || password.length < 6) {
-          addToast({ type: 'error', message: 'La contraseña debe tener al menos 6 caracteres' })
+        if (!password || password.length < 8) {
+          addToast({ type: 'error', message: 'La contraseña debe tener al menos 8 caracteres' })
           setIsSubmitting(false)
           return
         }
@@ -244,7 +244,7 @@ export default function LoginPage() {
                       </Button>
                     </div>
                     {mode === 'signup' && (
-                      <p className="text-xs text-muted-foreground">Mínimo 6 caracteres</p>
+                      <p className="text-xs text-muted-foreground">Mínimo 8 caracteres (letras y números)</p>
                     )}
                   </div>
                 )}

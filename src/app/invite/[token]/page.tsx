@@ -93,8 +93,8 @@ export default function InviteAcceptPage() {
 
   const handleCreatePassword = async () => {
     if (!invite) return
-    if (!password || password.length < 6) {
-      addToast({ type: 'error', message: 'La contraseña debe tener al menos 6 caracteres' })
+    if (!password || password.length < 8) {
+      addToast({ type: 'error', message: 'La contraseña debe tener al menos 8 caracteres' })
       return
     }
     if (password !== password2) {
@@ -163,6 +163,7 @@ export default function InviteAcceptPage() {
               <Label>Confirmar contraseña</Label>
               <Input type="password" value={password2} onChange={(e) => setPassword2(e.target.value)} />
             </div>
+            <p className="text-xs text-muted-foreground">Mínimo 8 caracteres (letras y números).</p>
             <p className="text-xs text-muted-foreground">
               Si ya tienes cuenta con este email, usa tu contraseña para entrar y aceptar la invitación.
             </p>
