@@ -108,6 +108,7 @@ export default function MonthlyPage() {
   const [editStartDate, setEditStartDate] = useState('')
   const [editEndDate, setEditEndDate] = useState('')
   const [editIndefinite, setEditIndefinite] = useState(true)
+  const [cumulativeSavings, setCumulativeSavings] = useState<Record<string, number>>({})
 
   useEffect(() => {
     setTableAnchorMonth(selectedMonth || getCurrentMonth())
