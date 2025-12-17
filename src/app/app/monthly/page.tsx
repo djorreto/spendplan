@@ -113,6 +113,15 @@ export default function MonthlyPage() {
   const [editStartDate, setEditStartDate] = useState('')
   const [editEndDate, setEditEndDate] = useState('')
   const [editIndefinite, setEditIndefinite] = useState(true)
+  const [editExpenseOpen, setEditExpenseOpen] = useState(false)
+  const [editExpense, setEditExpense] = useState<Expense | null>(null)
+  const [editExpenseAmountText, setEditExpenseAmountText] = useState('')
+  const [editExpenseDate, setEditExpenseDate] = useState('')
+  const [editExpenseDesc, setEditExpenseDesc] = useState('')
+  const [editExpenseMerchant, setEditExpenseMerchant] = useState('')
+  const [editExpenseOpen, setEditExpenseOpen] = useState(false)
+  const [editExpense, setEditExpense] = useState<any | null>(null)
+  const [editExpenseAmountText, setEditExpenseAmountText] = useState('')
 
   useEffect(() => {
     setTableAnchorMonth(selectedMonth || getCurrentMonth())
@@ -166,6 +175,50 @@ export default function MonthlyPage() {
     setEditEndDate(item.end_date?.slice(0, 10) || '')
     setEditIndefinite(!!item.is_indefinite)
     setEditOpen(true)
+  }
+
+  const openEditExpenseCard = (exp: Expense) => {
+    setEditExpense(exp)
+    const digits = String(Math.round(Number(exp.amount) || 0)).replace(/\D/g, '')
+    setEditExpenseAmountText(digits ? formatWithDots(digits) : '')
+    setEditExpenseDate(String(exp.expense_date).slice(0, 10))
+    setEditExpenseDesc(exp.description || exp.merchant || '')
+    setEditExpenseMerchant(exp.merchant || '')
+    setEditExpenseOpen(true)
+  }
+
+  const saveEditExpense = async () => {
+    if (!editExpense) return
+    const amountDigits = (editExpenseAmountText || '').replace(/\D/g, '')
+    const amountNum = amountDigits ? Number(amountDigits) : 0
+    if (amountNum <= 0) {
+      addToast({ type: 'error', message: 'Ingresa un monto válido' })
+      return
+    }
+    const supabase = supabaseBrowser()
+    const op = startOp('monthly.editExpense', { id: editExpense.id })
+    try {
+      const { error } = await supabase
+        .from('expenses')
+        .update({
+          amount: amountNum,
+          expense_date: editExpenseDate || editExpense.expense_date,
+          description: editExpenseDesc || null,
+          merchant: editExpenseMerchant || null,
+          is_unbudgeted: false, // si tiene categoría, no se marca como no presupuestado
+        })
+        .eq('id', editExpense.id)
+        .eq('household_id', currentHousehold?.id)
+      if (error) throw error
+      addToast({ type: 'success', message: 'Gasto actualizado' })
+      setEditExpenseOpen(false)
+      setEditExpense(null)
+      await loadData()
+      endOp(op, true)
+    } catch (error) {
+      endOp(op, false, { error: formatSupabaseError(error) })
+      addToast({ type: 'error', message: 'No se pudo actualizar el gasto' })
+    }
   }
 
   const saveInlineEdit = async () => {
@@ -233,10 +286,14 @@ export default function MonthlyPage() {
         .reduce((sum, i) => sum + (isItemActiveInMonth(i, ym) ? getMonthlyAmount(i) : 0), 0)
       const monthExpenses = expensesByMonth.get(ym) || []
       const varSpent = monthExpenses
-        .filter((e) => e.category_id && variableCategoryIds.has(e.category_id))
+        .filter((e) => e.category_id && variableCategoryIds.has(e.category_id) && !e.is_unbudgeted)
         .reduce((sum, e) => sum + (Number(e.amount) || 0), 0)
       const unbudgeted = monthExpenses
-        .filter((e) => e.is_unbudgeted || !e.category_id || !variableCategoryIds.has(e.category_id))
+        .filter((e) => {
+          const hasVarCat = e.category_id && variableCategoryIds.has(e.category_id)
+          if (hasVarCat && !e.is_unbudgeted) return false
+          return e.is_unbudgeted || !hasVarCat
+        })
         .reduce((sum, e) => sum + (Number(e.amount) || 0), 0)
       const balance = income - fixed - varSpent - unbudgeted
       const balancePlanned = income - fixed - varBudget
@@ -494,7 +551,7 @@ export default function MonthlyPage() {
                                       <Button
                                         variant="ghost"
                                         size="icon"
-                                        onClick={() => router.push(`/app/expenses?edit=${exp.id}`)}
+                                        onClick={() => openEditExpenseCard(exp)}
                                         aria-label="Editar gasto"
                                       >
                                         <Edit2 className="h-4 w-4" />
@@ -730,6 +787,47 @@ export default function MonthlyPage() {
             <Button onClick={saveInlineEdit} disabled={editSaving}>
               {editSaving ? 'Guardando...' : 'Guardar'}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={editExpenseOpen} onOpenChange={setEditExpenseOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar gasto</DialogTitle>
+            <DialogDescription>Actualiza monto, fecha y detalle sin salir de esta vista.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label>Monto</Label>
+              <Input
+                type="text"
+                inputMode="numeric"
+                value={editExpenseAmountText}
+                onChange={(e) => {
+                  const digits = e.target.value.replace(/\D/g, '')
+                  setEditExpenseAmountText(digits ? formatWithDots(digits) : '')
+                }}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Fecha</Label>
+              <Input type="date" value={editExpenseDate} onChange={(e) => setEditExpenseDate(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label>Descripción</Label>
+              <Input value={editExpenseDesc} onChange={(e) => setEditExpenseDesc(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label>Comercio</Label>
+              <Input value={editExpenseMerchant} onChange={(e) => setEditExpenseMerchant(e.target.value)} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditExpenseOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={saveEditExpense}>Guardar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
