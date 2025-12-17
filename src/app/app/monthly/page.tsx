@@ -32,25 +32,27 @@ type Frequency = 'monthly' | 'weekly' | 'biweekly' | 'yearly' | 'one_time'
 
 const formatWithDots = (digits: string) => digits.replace(/\B(?=(\d{3})+(?!\d))/g, '.')
 
-function isItemActiveByDate(item: BudgetItem, referenceDate: Date = new Date()): boolean {
-  const startDate = new Date(item.start_date)
+function monthRange(ym: string) {
+  const [y, m] = ym.split('-').map(Number)
+  const start = new Date(y, (m || 1) - 1, 1)
+  const endExclusive = new Date(y, (m || 1), 1)
+  return { start, endExclusive }
+}
+
+function isItemActiveInMonth(item: BudgetItem, ym: string): boolean {
+  const { start, endExclusive } = monthRange(ym)
+  const itemStart = new Date(item.start_date)
+  if (!Number.isFinite(itemStart.getTime())) return false
 
   if (item.frequency === 'one_time') {
-    const itemMonth = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}`
-    const refMonth = `${referenceDate.getFullYear()}-${String(referenceDate.getMonth() + 1).padStart(2, '0')}`
-    return itemMonth === refMonth
+    return itemStart >= start && itemStart < endExclusive
   }
 
-  if (referenceDate < startDate) return false
+  const overlaps =
+    itemStart < endExclusive &&
+    (item.is_indefinite || !item.end_date || new Date(item.end_date) >= start)
 
-  if (!item.is_indefinite && item.end_date) {
-    const endDate = new Date(item.end_date)
-    endDate.setMonth(endDate.getMonth() + 1)
-    endDate.setDate(0)
-    if (referenceDate > endDate) return false
-  }
-
-  return true
+  return overlaps
 }
 
 function getMonthlyAmount(item: BudgetItem): number {
@@ -217,16 +219,15 @@ export default function MonthlyPage() {
   const monthlySummary = useMemo(() => {
     const summary: Record<string, { income: number; fixed: number; varBudget: number; varSpent: number; unbudgeted: number; balance: number; balancePlanned: number }> = {}
     monthsWindow.forEach((ym) => {
-      const refDate = new Date(`${ym}-15`)
       const income = budgetItems
         .filter(i => i.kind === 'income')
-        .reduce((sum, i) => sum + (isItemActiveByDate(i, refDate) ? getMonthlyAmount(i) : 0), 0)
+        .reduce((sum, i) => sum + (isItemActiveInMonth(i, ym) ? getMonthlyAmount(i) : 0), 0)
       const fixed = budgetItems
         .filter(i => i.kind === 'expense' && i.type === 'fixed')
-        .reduce((sum, i) => sum + (isItemActiveByDate(i, refDate) ? getMonthlyAmount(i) : 0), 0)
+        .reduce((sum, i) => sum + (isItemActiveInMonth(i, ym) ? getMonthlyAmount(i) : 0), 0)
       const varBudget = budgetItems
         .filter(i => i.kind === 'expense' && i.type === 'variable')
-        .reduce((sum, i) => sum + (isItemActiveByDate(i, refDate) ? getMonthlyAmount(i) : 0), 0)
+        .reduce((sum, i) => sum + (isItemActiveInMonth(i, ym) ? getMonthlyAmount(i) : 0), 0)
       const monthExpenses = expensesByMonth.get(ym) || []
       const varSpent = monthExpenses
         .filter((e) => e.category_id && variableCategoryIds.has(e.category_id))
@@ -395,7 +396,7 @@ export default function MonthlyPage() {
                     </div>
                   </TableCell>
                   {monthsWindow.map((ym) => {
-                    const active = isItemActiveByDate(item, new Date(`${ym}-15`))
+                    const active = isItemActiveInMonth(item, ym)
                     return (
                       <TableCell key={ym} className="text-right text-xs sm:text-sm">
                         {active ? formatCurrency(getMonthlyAmount(item), currentHousehold?.currency) : '—'}
@@ -418,7 +419,7 @@ export default function MonthlyPage() {
                     </div>
                   </TableCell>
                   {monthsWindow.map((ym) => {
-                    const active = isItemActiveByDate(item, new Date(`${ym}-15`))
+                    const active = isItemActiveInMonth(item, ym)
                     return (
                       <TableCell key={ym} className="text-right text-xs sm:text-sm">
                         {active ? formatCurrency(getMonthlyAmount(item), currentHousehold?.currency) : '—'}
@@ -451,7 +452,7 @@ export default function MonthlyPage() {
                       </div>
                     </TableCell>
                     {monthsWindow.map((ym) => {
-                      const active = isItemActiveByDate(item, new Date(`${ym}-15`))
+                      const active = isItemActiveInMonth(item, ym)
                       const budget = active ? getMonthlyAmount(item) : 0
                       const monthExpenses = expensesByMonth.get(ym) || []
                       const spent = active
