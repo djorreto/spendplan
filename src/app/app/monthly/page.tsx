@@ -272,6 +272,18 @@ export default function MonthlyPage() {
     [budgetItems]
   )
 
+  const activeVarByMonthCategory = useMemo(() => {
+    const set = new Set<string>()
+    monthsWindow.forEach((ym) => {
+      budgetItems.forEach((i) => {
+        if (i.kind === 'expense' && i.type === 'variable' && i.category_id && isItemActiveInMonth(i, ym)) {
+          set.add(`${ym}-${i.category_id}`)
+        }
+      })
+    })
+    return set
+  }, [budgetItems, monthsWindow])
+
   const monthlySummary = useMemo(() => {
     const summary: Record<string, { income: number; fixed: number; varBudget: number; varSpent: number; unbudgeted: number; balance: number; balancePlanned: number }> = {}
     monthsWindow.forEach((ym) => {
@@ -286,13 +298,14 @@ export default function MonthlyPage() {
         .reduce((sum, i) => sum + (isItemActiveInMonth(i, ym) ? getMonthlyAmount(i) : 0), 0)
       const monthExpenses = expensesByMonth.get(ym) || []
       const varSpent = monthExpenses
-        .filter((e) => e.category_id && variableCategoryIds.has(e.category_id) && !e.is_unbudgeted)
+        .filter((e) => e.category_id && activeVarByMonthCategory.has(`${ym}-${e.category_id}`))
         .reduce((sum, e) => sum + (Number(e.amount) || 0), 0)
       const unbudgeted = monthExpenses
         .filter((e) => {
-          const hasVarCat = e.category_id && variableCategoryIds.has(e.category_id)
-          if (hasVarCat && !e.is_unbudgeted) return false
-          return e.is_unbudgeted || !hasVarCat
+          const cat = e.category_id
+          if (!cat) return true
+          const hasActiveVar = activeVarByMonthCategory.has(`${ym}-${cat}`)
+          return !hasActiveVar
         })
         .reduce((sum, e) => sum + (Number(e.amount) || 0), 0)
       const balance = income - fixed - varSpent - unbudgeted
@@ -300,7 +313,7 @@ export default function MonthlyPage() {
       summary[ym] = { income, fixed, varBudget, varSpent, unbudgeted, balance, balancePlanned }
     })
     return summary
-  }, [monthsWindow, budgetItems, expensesByMonth, variableCategoryIds])
+  }, [monthsWindow, budgetItems, expensesByMonth, activeVarByMonthCategory])
 
   // Ahorro acumulado: suma progresiva de izquierda a derecha.
   // Meses futuros usan balancePlanned (asumiendo consumo total de varBudget),
@@ -535,10 +548,12 @@ export default function MonthlyPage() {
                       {monthsWindow.map((ym) => {
                     const cellExpenses = expenses
                       .filter((e) => {
-                        if (e.is_unbudgeted) return false
-                        if (e.category_id !== item.category_id) return false
                         const ymExpense = parseDateUTC(e.expense_date).toISOString().slice(0, 7)
-                        return ymExpense === ym
+                        if (ymExpense !== ym) return false
+                        if (e.category_id !== item.category_id) return false
+                        // Si hay variable activa para esta categoría/mes, se muestra aquí.
+                        const hasActiveVar = activeVarByMonthCategory.has(`${ym}-${e.category_id}`)
+                        return hasActiveVar
                       })
                       .sort((a, b) => (a.expense_date > b.expense_date ? -1 : 1))
                         return (
@@ -606,10 +621,12 @@ export default function MonthlyPage() {
                   {monthsWindow.map((ym) => {
                     const cellExpenses = expenses
                       .filter((e) => {
-                        const hasVarCat = e.category_id && variableCategoryIds.has(e.category_id)
-                        if (hasVarCat && !e.is_unbudgeted) return false
                         const ymExpense = parseDateUTC(e.expense_date).toISOString().slice(0, 7)
-                        return ymExpense === ym
+                        if (ymExpense !== ym) return false
+                        const cat = e.category_id
+                        if (!cat) return true
+                        const hasActiveVar = activeVarByMonthCategory.has(`${ym}-${cat}`)
+                        return !hasActiveVar
                       })
                       .sort((a, b) => (a.expense_date > b.expense_date ? -1 : 1))
                     return (
