@@ -242,6 +242,27 @@ export default function MonthlyPage() {
     return summary
   }, [monthsWindow, budgetItems, expensesByMonth, variableCategoryIds])
 
+  // Ahorro acumulado: suma progresiva de izquierda a derecha.
+  // Meses futuros usan balancePlanned (asumiendo consumo total de varBudget),
+  // meses pasados/actual usan balance real.
+  const cumulativeSavings = useMemo(() => {
+    const currentYm = getCurrentMonth()
+    let acc = 0
+    const res: Record<string, number> = {}
+    monthsWindow.forEach((ym) => {
+      const base = monthlySummary[ym]
+      if (!base) {
+        res[ym] = acc
+        return
+      }
+      const isFuture = ym > currentYm
+      const chosen = isFuture ? base.balancePlanned : base.balance
+      acc += chosen
+      res[ym] = acc
+    })
+    return res
+  }, [monthlySummary, monthsWindow])
+
   const loadData = async () => {
     setLoading(true)
     if (isDemoMode) {
@@ -612,6 +633,27 @@ export default function MonthlyPage() {
                       : '—'}
                   </TableCell>
                 ))}
+              </TableRow>
+
+              {/* Ahorro acumulado */}
+              <TableRow>
+                <TableCell className="whitespace-nowrap">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold">Ahorro acumulado</span>
+                  </div>
+                </TableCell>
+                {monthsWindow.map((ym) => {
+                  const isFuture = ym > getCurrentMonth()
+                  const val = cumulativeSavings[ym] ?? 0
+                  return (
+                    <TableCell
+                      key={ym}
+                      className={`text-right text-xs sm:text-sm ${isFuture ? 'text-muted-foreground' : 'text-foreground'}`}
+                    >
+                      {formatCurrency(val, currentHousehold?.currency)}
+                    </TableCell>
+                  )
+                })}
               </TableRow>
             </TableBody>
           </Table>
