@@ -32,16 +32,19 @@ type Frequency = 'monthly' | 'weekly' | 'biweekly' | 'yearly' | 'one_time'
 
 const formatWithDots = (digits: string) => digits.replace(/\B(?=(\d{3})+(?!\d))/g, '.')
 
+// Parse date string YYYY-MM-DD in UTC to evitar corrimientos por huso.
+const parseDateUTC = (dateStr: string) => new Date(`${dateStr}T00:00:00Z`)
+
 function monthRange(ym: string) {
   const [y, m] = ym.split('-').map(Number)
-  const start = new Date(y, (m || 1) - 1, 1)
-  const endExclusive = new Date(y, (m || 1), 1)
+  const start = new Date(Date.UTC(y, (m || 1) - 1, 1))
+  const endExclusive = new Date(Date.UTC(y, m || 1, 1)) // primer día del mes siguiente
   return { start, endExclusive }
 }
 
 function isItemActiveInMonth(item: BudgetItem, ym: string): boolean {
   const { start, endExclusive } = monthRange(ym)
-  const itemStart = new Date(item.start_date)
+  const itemStart = parseDateUTC(item.start_date)
   if (!Number.isFinite(itemStart.getTime())) return false
 
   if (item.frequency === 'one_time') {
@@ -50,7 +53,7 @@ function isItemActiveInMonth(item: BudgetItem, ym: string): boolean {
 
   const overlaps =
     itemStart < endExclusive &&
-    (item.is_indefinite || !item.end_date || new Date(item.end_date) >= start)
+    (item.is_indefinite || !item.end_date || parseDateUTC(item.end_date) >= start)
 
   return overlaps
 }
