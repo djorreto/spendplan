@@ -1,19 +1,3 @@
-  const formatWithDots = (digits: string) => digits.replace(/\B(?=(\d{3})+(?!\d))/g, '.')
-
-  const handleAmountChange = (raw: string) => {
-    const digits = raw.replace(/\D/g, '')
-    const num = digits ? parseInt(digits, 10) : 0
-    setFormAmountText(digits ? formatWithDots(digits) : '')
-    setFormData({ ...formData, amount: num })
-  }
-
-  const handleExpenseAmountChange = (raw: string) => {
-    const digits = raw.replace(/\D/g, '')
-    const num = digits ? parseFloat(digits) : 0
-    setExpenseAmountText(digits ? formatWithDots(digits) : '')
-    setExpenseForm({ ...expenseForm, amount: num })
-  }
-
 'use client'
 
 export const dynamic = 'force-dynamic'
@@ -479,6 +463,22 @@ export default function BudgetPage() {
   const [savingGoal, setSavingGoal] = useState(false)
   const [formAmountText, setFormAmountText] = useState('')
   const [expenseAmountText, setExpenseAmountText] = useState('')
+
+  const formatWithDots = (digits: string) => digits.replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+
+  const handleAmountChange = (raw: string) => {
+    const digits = raw.replace(/\D/g, '')
+    const num = digits ? parseInt(digits, 10) : 0
+    setFormAmountText(digits ? formatWithDots(digits) : '')
+    setFormData({ ...formData, amount: num })
+  }
+
+  const handleExpenseAmountChange = (raw: string) => {
+    const digits = raw.replace(/\D/g, '')
+    const num = digits ? parseFloat(digits) : 0
+    setExpenseAmountText(digits ? formatWithDots(digits) : '')
+    setExpenseForm({ ...expenseForm, amount: num })
+  }
   const [conflictItems, setConflictItems] = useState<BudgetItem[]>([])
   const [conflictDialogOpen, setConflictDialogOpen] = useState(false)
   
