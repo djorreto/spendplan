@@ -20,7 +20,6 @@ import { Button } from '@/components/ui/button'
 // Demo mode constants
 const DEMO_BUDGET_KEY = 'spendplan_demo_budget_v2'
 const DEMO_EXPENSES_KEY = 'spendplan_demo_expenses'
-const TERMS_VERSION = 'v1.1'
 
 export function AppLayoutClient({ children }: { children: React.ReactNode }) {
   const router = useRouter()
@@ -32,6 +31,11 @@ export function AppLayoutClient({ children }: { children: React.ReactNode }) {
   const [acceptingTerms, setAcceptingTerms] = useState(false)
   const [acceptError, setAcceptError] = useState<string | null>(null)
   const [termsAcceptedLocal, setTermsAcceptedLocal] = useState(false)
+  const [legalVersions, setLegalVersions] = useState<{ terms: string | null; privacy: string | null }>({
+    terms: null,
+    privacy: null,
+  })
+  const [legalLoading, setLegalLoading] = useState(false)
 
   const isDemo = isDemoMode && !!currentHousehold?.id?.startsWith('demo-')
 
@@ -356,28 +360,63 @@ export function AppLayoutClient({ children }: { children: React.ReactNode }) {
     }
   }, [authLoading, isAuthenticated, router])
 
-  const needsTermsAcceptance =
-    !!user &&
-    !!profile &&
-    !termsAcceptedLocal &&
-    (!profile.terms_accepted_at ||
-      profile.terms_version !== TERMS_VERSION ||
-      !profile.privacy_accepted_at ||
-      profile.privacy_version !== TERMS_VERSION)
+  useEffect(() => {
+    if (!isAuthenticated) return
+    let cancelled = false
+    const loadLegal = async () => {
+      setLegalLoading(true)
+      try {
+        const res = await fetch('/api/legal/current')
+        const json = await res.json()
+        if (!cancelled && res.ok) {
+          setLegalVersions({
+            terms: json?.data?.terms?.version || null,
+            privacy: json?.data?.privacy?.version || null,
+          })
+        }
+      } catch {
+        // ignore, will retry on next render
+      } finally {
+        if (!cancelled) setLegalLoading(false)
+      }
+    }
+    void loadLegal()
+    return () => {
+      cancelled = true
+    }
+  }, [isAuthenticated])
+
+  const needsTermsAcceptance = useMemo(() => {
+    if (!user || !profile || termsAcceptedLocal || legalLoading) return false
+    const hasCurrent = legalVersions.terms || legalVersions.privacy
+    if (!hasCurrent) return false
+    const termsMismatch =
+      legalVersions.terms &&
+      (!profile.terms_version || profile.terms_version !== legalVersions.terms || !profile.terms_accepted_at)
+    const privacyMismatch =
+      legalVersions.privacy &&
+      (!profile.privacy_version || profile.privacy_version !== legalVersions.privacy || !profile.privacy_accepted_at)
+    return termsMismatch || privacyMismatch
+  }, [user, profile, termsAcceptedLocal, legalLoading, legalVersions])
 
   const handleAcceptTerms = async () => {
     if (!profile) return
     setAcceptingTerms(true)
     setAcceptError(null)
     try {
-      const { error } = await updateProfile({
+      const res = await fetch('/api/legal/accept', { method: 'POST' })
+      const json = await res.json()
+      if (!res.ok) {
+        throw new Error(json?.error || 'No se pudo guardar tu aceptación')
+      }
+      // Refrescar perfil localmente para evitar reabrir el modal
+      await updateProfile({
         terms_accepted_at: new Date().toISOString(),
-        terms_version: TERMS_VERSION,
+        terms_version: legalVersions.terms || undefined,
         privacy_accepted_at: new Date().toISOString(),
-        privacy_version: TERMS_VERSION,
+        privacy_version: legalVersions.privacy || undefined,
       })
-      if (error) setAcceptError(error)
-      else setTermsAcceptedLocal(true)
+      setTermsAcceptedLocal(true)
       await loadHouseholds(true)
     } catch (e: any) {
       setAcceptError(e?.message || 'No se pudo guardar tu aceptación')
@@ -475,8 +514,8 @@ export function AppLayoutClient({ children }: { children: React.ReactNode }) {
                 </Link>.
               </p>
               <p>
-                Esta aceptación es obligatoria para continuar usando la aplicación. Versión: Términos {TERMS_VERSION} y
-                Privacidad {TERMS_VERSION}.
+                Esta aceptación es obligatoria para continuar usando la aplicación. Versión vigente: Términos{' '}
+                {legalVersions.terms || '—'} y Privacidad {legalVersions.privacy || '—'}.
               </p>
               {acceptError && <p className="text-destructive text-sm">{acceptError}</p>}
             </div>

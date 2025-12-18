@@ -1,19 +1,29 @@
-export default function TerminosPage() {
+import { buildPublicLegalUrl, getCurrentLegalDocuments } from '@/lib/legal'
+import { formatDate } from '@/lib/utils'
+
+export default async function TerminosPage() {
+  const current = await getCurrentLegalDocuments().catch(() => ({} as any))
+  const doc = current?.terms
+  const version = doc?.version || 'v1.1'
+  const title = doc?.title || 'Términos y Condiciones'
+  const updatedAt = doc?.created_at ? formatDate(doc.created_at) : '—'
+  const pdfUrl = doc?.storage_path ? buildPublicLegalUrl(doc.storage_path) : '#'
+
   return (
     <div className="max-w-3xl mx-auto px-4 py-12 space-y-6">
-      <h1 className="text-3xl font-bold">Términos y Condiciones (v1.1)</h1>
-      <p className="text-muted-foreground">
-        Última actualización: 2025-12-17
-      </p>
+      <h1 className="text-3xl font-bold">
+        {title} ({version})
+      </h1>
+      <p className="text-muted-foreground">Última actualización: {updatedAt}</p>
       <p className="text-sm text-muted-foreground">
         Versión PDF:{" "}
         <a
           className="underline"
-          href="https://soghkhyleaknrmcqmubb.supabase.co/storage/v1/object/public/assets/Terminos%20y%20Condiciones%20(v1.1)%2020251217%20%20.pdf"
+          href={pdfUrl}
           target="_blank"
           rel="noreferrer"
         >
-          Descargar Términos y Condiciones (v1.1)
+          Descargar {title} ({version})
         </a>
       </p>
       <div className="space-y-4 text-sm text-muted-foreground leading-relaxed">

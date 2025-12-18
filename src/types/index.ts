@@ -13,6 +13,7 @@ export type ExpenseStatus = 'confirmed' | 'pending' | 'cancelled'
 export type ExpenseSource = 'manual' | 'whatsapp' | 'csv_import' | 'api'
 export type TransactionStatus = 'unreconciled' | 'reconciled' | 'ignored'
 export type AIRequestType = 'categorize' | 'insights' | 'ocr' | 'parse_message'
+export type LegalDocType = 'terms' | 'privacy'
 
 // ========================================
 // Base Entity
@@ -43,6 +44,26 @@ export interface Profile {
   updated_at: string
   telegram_connected?: boolean | null
   telegram_reminder_dismissed_at?: string | null
+}
+
+export interface LegalDocument {
+  id: string
+  doc_type: LegalDocType
+  version: string
+  title: string
+  storage_path: string
+  created_by: string | null
+  created_at: string
+  is_current: boolean
+}
+
+export interface LegalAcceptance {
+  id: string
+  user_id: string
+  terms_version: string | null
+  privacy_version: string | null
+  action: 'accepted' | 'force_reset'
+  created_at: string
 }
 
 // ========================================

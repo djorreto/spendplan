@@ -115,5 +115,6 @@ export const BUCKETS = {
   DOCUMENTS: 'documents',
   AVATARS: 'avatars',
   UPLOADS: 'uploads',
+  LEGAL: 'legal',
 } as const
 
