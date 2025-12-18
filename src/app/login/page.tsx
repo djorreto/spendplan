@@ -14,7 +14,6 @@ import { Loading } from '@/components/ui/loading'
 import { Eye, EyeOff, ArrowLeft, Mail, Lock, User } from 'lucide-react'
 import { PRIVATE_BETA_BLOCK_MESSAGE, PRIVATE_BETA_CHECK_ERROR_MESSAGE } from '@/lib/beta-allowlist'
 import { Checkbox } from '@/components/ui/checkbox'
-import Link from 'next/link'
 
 type Mode = 'login' | 'signup' | 'forgot'
 
