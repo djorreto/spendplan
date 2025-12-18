@@ -194,6 +194,9 @@ export default function SettingsPage() {
               <Send className="h-4 w-4 mr-2" />
               Integraciones
             </TabsTrigger>
+            <TabsTrigger value="legal" className="text-sm px-3 py-2 whitespace-nowrap">
+              Legal
+            </TabsTrigger>
             <TabsTrigger value="debug" className="text-sm px-3 py-2 whitespace-nowrap">
               Debug
             </TabsTrigger>
@@ -566,6 +569,54 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
 
+        </TabsContent>
+
+        {/* Legal Tab */}
+        <TabsContent value="legal">
+          <Card>
+            <CardHeader>
+              <CardTitle>Legal</CardTitle>
+              <CardDescription>Documentos vigentes de la aplicación</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <h3 className="text-sm font-medium">Términos y Condiciones (v1.1)</h3>
+                <p className="text-sm text-muted-foreground">
+                  Última actualización: 2025-12-17. Revisa la versión vigente:{' '}
+                  <a
+                    href="https://soghkhyleaknrmcqmubb.supabase.co/storage/v1/object/public/assets/Terminos%20y%20Condiciones%20(v1.1)%2020251217%20%20.pdf"
+                    className="text-primary underline"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    PDF
+                  </a>{' '}
+                  o la versión web en{' '}
+                  <a href="/legal/terminos" className="text-primary underline" target="_blank" rel="noreferrer">
+                    /legal/terminos
+                  </a>.
+                </p>
+              </div>
+              <div>
+                <h3 className="text-sm font-medium">Política de Privacidad (v1.1)</h3>
+                <p className="text-sm text-muted-foreground">
+                  Última actualización: 2025-12-17. Revisa la versión vigente:{' '}
+                  <a
+                    href="https://soghkhyleaknrmcqmubb.supabase.co/storage/v1/object/public/assets/Politica%20de%20Privacidad%20(v1.1)%2020251217.pdf"
+                    className="text-primary underline"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    PDF
+                  </a>{' '}
+                  o la versión web en{' '}
+                  <a href="/legal/privacidad" className="text-primary underline" target="_blank" rel="noreferrer">
+                    /legal/privacidad
+                  </a>.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* Debug Tab */}
