@@ -20,7 +20,7 @@ import { Button } from '@/components/ui/button'
 // Demo mode constants
 const DEMO_BUDGET_KEY = 'spendplan_demo_budget_v2'
 const DEMO_EXPENSES_KEY = 'spendplan_demo_expenses'
-const TERMS_VERSION = 'v1.0'
+const TERMS_VERSION = 'v1.1'
 
 export function AppLayoutClient({ children }: { children: React.ReactNode }) {
   const router = useRouter()
@@ -479,7 +479,8 @@ export function AppLayoutClient({ children }: { children: React.ReactNode }) {
                 </Link>.
               </p>
               <p>
-                Esta aceptación es obligatoria para continuar usando la aplicación. Versión: {TERMS_VERSION}.
+                Esta aceptación es obligatoria para continuar usando la aplicación. Versión: Términos {TERMS_VERSION} y
+                Privacidad {TERMS_VERSION}.
               </p>
               {acceptError && <p className="text-destructive text-sm">{acceptError}</p>}
             </div>
