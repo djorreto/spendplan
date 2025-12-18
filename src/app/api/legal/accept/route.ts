@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { getSessionUser } from '@/lib/admin-auth'
 import { ensureSupabaseAdmin, getCurrentLegalDocuments } from '@/lib/legal'
 
+export const runtime = 'nodejs'
+
 export async function POST(req: Request) {
   try {
     const user = await getSessionUser(req)

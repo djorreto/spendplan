@@ -3,6 +3,8 @@ import { requireSuperAdmin } from '@/lib/admin-auth'
 import { getLegalDocuments } from '@/lib/legal'
 import type { LegalDocType } from '@/types'
 
+export const runtime = 'nodejs'
+
 export async function GET(req: NextRequest) {
   try {
     await requireSuperAdmin(req)

@@ -3,6 +3,8 @@ import { requireSuperAdmin } from '@/lib/admin-auth'
 import { forceReacceptance } from '@/lib/legal'
 import type { LegalDocType } from '@/types'
 
+export const runtime = 'nodejs'
+
 export async function POST(req: Request) {
   try {
     await requireSuperAdmin(req)
