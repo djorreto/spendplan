@@ -241,10 +241,19 @@ async function ensureHouseholdSelection(
     return { household_id: link.household_id, user_id: link.user_id }
   }
 
+  await promptHouseholdSelection(chatId, link.household_id, list)
+  return null
+}
+
+async function promptHouseholdSelection(
+  chatId: number,
+  currentHouseholdId: string | null,
+  memberships: Array<{ household_id: string; households?: { name?: string } }>
+) {
   const rows: any[][] = []
-  for (let i = 0; i < list.length; i += 2) {
-    const a = list[i]
-    const b = list[i + 1]
+  for (let i = 0; i < memberships.length; i += 2) {
+    const a = memberships[i]
+    const b = memberships[i + 1]
     const row: any[] = [
       { text: a.households?.name || 'Hogar', callback_data: `hh:${a.household_id}` },
     ]
@@ -252,7 +261,7 @@ async function ensureHouseholdSelection(
     rows.push(row)
   }
 
-  const currentName = list.find((m) => m.household_id === link.household_id)?.households?.name
+  const currentName = memberships.find((m) => m.household_id === currentHouseholdId)?.households?.name
   await sendTelegramMessage(
     chatId,
     `🏠 Tienes varios hogares. Selecciona a cuál aplicar este chat.\n` +
@@ -260,7 +269,6 @@ async function ensureHouseholdSelection(
       `Usaré el que elijas para gastos y consultas.`,
     { reply_markup: { inline_keyboard: rows } }
   )
-  return null
 }
 
 async function touchTelegramActivity(telegramUserId: number) {
@@ -1136,6 +1144,15 @@ async function handleCommand(
         link = ensuredAI
       }
       await analyzeWithAI(chatId, args.join(' '))
+      break
+
+    case '/hogar':
+    case '/household':
+      if (!link) {
+        await sendTelegramMessage(chatId, '❌ Primero vincula tu cuenta con /vincular')
+        return
+      }
+      await ensureHouseholdSelection(chatId, odId, link, { silentIfAlreadySelected: false })
       break
       
     case '/ayuda':
