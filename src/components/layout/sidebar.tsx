@@ -60,9 +60,13 @@ export function Sidebar({ className, onLogout }: SidebarProps) {
         isCollapsed ? 'justify-center' : 'justify-between'
       )}>
         {isCollapsed ? (
-          <LogoIcon size="sm" />
+          <Link href="/app/dashboard" className="inline-flex">
+            <LogoIcon size="sm" />
+          </Link>
         ) : (
-          <Logo size="md" />
+          <Link href="/app/dashboard" className="inline-flex items-center">
+            <Logo size="md" />
+          </Link>
         )}
         <Button
           variant="ghost"
