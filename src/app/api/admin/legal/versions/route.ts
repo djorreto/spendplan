@@ -5,7 +5,7 @@ import type { LegalDocType } from '@/types'
 
 export async function GET(req: NextRequest) {
   try {
-    await requireSuperAdmin()
+    await requireSuperAdmin(req)
     const { searchParams } = new URL(req.url)
     const docType = searchParams.get('doc_type') as LegalDocType | null
     const docs = await getLegalDocuments(docType || undefined)

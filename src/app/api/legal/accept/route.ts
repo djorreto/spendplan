@@ -2,9 +2,9 @@ import { NextResponse } from 'next/server'
 import { getSessionUser } from '@/lib/admin-auth'
 import { ensureSupabaseAdmin, getCurrentLegalDocuments } from '@/lib/legal'
 
-export async function POST() {
+export async function POST(req: Request) {
   try {
-    const user = await getSessionUser()
+    const user = await getSessionUser(req)
     if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
 
     const admin = ensureSupabaseAdmin()

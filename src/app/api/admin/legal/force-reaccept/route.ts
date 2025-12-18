@@ -5,7 +5,7 @@ import type { LegalDocType } from '@/types'
 
 export async function POST(req: Request) {
   try {
-    await requireSuperAdmin()
+    await requireSuperAdmin(req)
     const body = await req.json().catch(() => ({}))
     const docType = body?.doc_type as LegalDocType | 'both' | undefined
     const docTypes: LegalDocType[] =

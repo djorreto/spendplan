@@ -114,7 +114,8 @@ export default function SuperAdminPage() {
     setLegalLoading(true)
     setLegalError(null)
     try {
-      const res = await fetch('/api/admin/legal/versions')
+      const headers = await getAuthHeaders()
+      const res = await fetch('/api/admin/legal/versions', { headers })
       const json = await res.json()
       if (!res.ok) {
         throw new Error(json?.error || 'No se pudieron cargar versiones')
@@ -144,6 +145,12 @@ export default function SuperAdminPage() {
     return StorageService.getPublicUrl(BUCKETS.LEGAL, doc.storage_path)
   }
 
+const getAuthHeaders = async () => {
+  const token = await supabaseBrowser().auth.getSession()
+  const accessToken = token.data.session?.access_token
+  return accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined
+}
+
   const onFileChange = (docType: LegalDocType, fileList: FileList | null) => {
     const file = fileList?.[0] || null
     setSelectedFiles((prev) => ({ ...prev, [docType]: file }))
@@ -163,7 +170,12 @@ export default function SuperAdminPage() {
       form.append('file', file)
       form.append('make_current', 'true')
       form.append('title', file.name)
-      const res = await fetch('/api/admin/legal/upload', { method: 'POST', body: form })
+      const headers = await getAuthHeaders()
+      const res = await fetch('/api/admin/legal/upload', {
+        method: 'POST',
+        headers,
+        body: form,
+      })
       const json = await res.json()
       if (!res.ok) throw new Error(json?.error || 'No se pudo subir')
       addToast({ type: 'success', message: 'Versión subida' })
@@ -181,9 +193,11 @@ export default function SuperAdminPage() {
   const toggleCurrent = async (docType: LegalDocType, version: string) => {
     setCurrentToggling(`${docType}-${version}`)
     try {
+      const auth = await getAuthHeaders()
+      const headers = auth ? { 'Content-Type': 'application/json', ...auth } : { 'Content-Type': 'application/json' }
       const res = await fetch('/api/admin/legal/set-current', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ doc_type: docType, version }),
       })
       const json = await res.json()
@@ -200,9 +214,11 @@ export default function SuperAdminPage() {
   const forceReaccept = async (docType: LegalDocType | 'both') => {
     setForcing(docType)
     try {
+      const auth = await getAuthHeaders()
+      const headers = auth ? { 'Content-Type': 'application/json', ...auth } : { 'Content-Type': 'application/json' }
       const res = await fetch('/api/admin/legal/force-reaccept', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ doc_type: docType }),
       })
       const json = await res.json()

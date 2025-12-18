@@ -9,7 +9,7 @@ export const runtime = 'nodejs'
 
 export async function POST(req: Request) {
   try {
-    const { user } = await requireSuperAdmin()
+    const { user } = await requireSuperAdmin(req)
     if (!supabaseAdmin) throw new Error('SUPABASE_SERVICE_ROLE_KEY is not configured')
 
     const formData = await req.formData()
