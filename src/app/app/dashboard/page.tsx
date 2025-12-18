@@ -835,7 +835,9 @@ export default function DashboardPage() {
                 <div className="w-32 sm:w-40 h-2 rounded-full bg-muted">
                   <div className="h-2 rounded-full bg-primary" style={{ width: `${Math.min(budgetUsedPercent, 100)}%` }} />
                 </div>
-                <p className="text-[11px] text-muted-foreground">Esperado {expectedPercent}%</p>
+                <p className="text-[11px] text-muted-foreground">
+                  Esperado {expectedPercent}% (por {data?.daysPassed} de {data?.daysInMonth} días)
+                </p>
               </div>
             </div>
           ) : (
@@ -1006,7 +1008,9 @@ export default function DashboardPage() {
                   style={{ width: `${Math.min(budgetUsedPercent, 130)}%` }}
                 />
               </div>
-              <span className="text-[11px] text-muted-foreground">Esperado {expectedPercent}%</span>
+              <span className="text-[11px] text-muted-foreground">
+                Esperado {expectedPercent}% (por {data?.daysPassed} de {data?.daysInMonth} días)
+              </span>
             </div>
             <div className="text-xs text-muted-foreground">
               {budgetUsedPercent > 100
