@@ -11,6 +11,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { supabaseBrowser } from '@/lib/supabase'
+import { Checkbox } from '@/components/ui/checkbox'
+import Link from 'next/link'
 
 export default function InviteAcceptPage() {
   const params = useParams<{ token: string }>()
@@ -29,6 +31,7 @@ export default function InviteAcceptPage() {
   } | null>(null)
   const [password, setPassword] = useState('')
   const [password2, setPassword2] = useState('')
+  const [acceptTerms, setAcceptTerms] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const acceptOnceRef = useRef(false)
 
@@ -101,6 +104,10 @@ export default function InviteAcceptPage() {
       addToast({ type: 'error', message: 'Las contraseñas no coinciden' })
       return
     }
+    if (!acceptTerms) {
+      addToast({ type: 'error', message: 'Debes aceptar los Términos y la Política de Privacidad' })
+      return
+    }
 
     setSubmitting(true)
     try {
@@ -164,6 +171,23 @@ export default function InviteAcceptPage() {
               <Input type="password" value={password2} onChange={(e) => setPassword2(e.target.value)} />
             </div>
             <p className="text-xs text-muted-foreground">Mínimo 8 caracteres (letras y números).</p>
+            <div className="flex items-start gap-2">
+              <Checkbox
+                id="terms"
+                checked={acceptTerms}
+                onCheckedChange={(v) => setAcceptTerms(!!v)}
+              />
+              <Label htmlFor="terms" className="text-sm text-muted-foreground">
+                Acepto los{' '}
+                <Link href="/legal/terminos" className="text-primary underline" target="_blank">
+                  Términos y Condiciones
+                </Link>{' '}
+                y la{' '}
+                <Link href="/legal/privacidad" className="text-primary underline" target="_blank">
+                  Política de Privacidad
+                </Link>.
+              </Label>
+            </div>
             <p className="text-xs text-muted-foreground">
               Si ya tienes cuenta con este email, usa tu contraseña para entrar y aceptar la invitación.
             </p>

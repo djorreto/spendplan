@@ -13,6 +13,8 @@ import { useToast } from '@/components/ui/toast'
 import { Loading } from '@/components/ui/loading'
 import { Eye, EyeOff, ArrowLeft, Mail, Lock, User } from 'lucide-react'
 import { PRIVATE_BETA_BLOCK_MESSAGE, PRIVATE_BETA_CHECK_ERROR_MESSAGE } from '@/lib/beta-allowlist'
+import { Checkbox } from '@/components/ui/checkbox'
+import Link from 'next/link'
 
 type Mode = 'login' | 'signup' | 'forgot'
 
@@ -26,6 +28,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [fullName, setFullName] = useState('')
+  const [acceptTerms, setAcceptTerms] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -83,6 +86,11 @@ export default function LoginPage() {
       } else if (mode === 'signup') {
         if (!password || password.length < 8) {
           addToast({ type: 'error', message: 'La contraseña debe tener al menos 8 caracteres' })
+          setIsSubmitting(false)
+          return
+        }
+        if (!acceptTerms) {
+          addToast({ type: 'error', message: 'Debes aceptar los Términos y la Política de Privacidad' })
           setIsSubmitting(false)
           return
         }
@@ -246,6 +254,28 @@ export default function LoginPage() {
                     {mode === 'signup' && (
                       <p className="text-xs text-muted-foreground">Mínimo 8 caracteres (letras y números)</p>
                     )}
+                  </div>
+                )}
+
+                {mode === 'signup' && (
+                  <div className="space-y-2">
+                    <div className="flex items-start gap-2">
+                      <Checkbox
+                        id="terms"
+                        checked={acceptTerms}
+                        onCheckedChange={(v) => setAcceptTerms(!!v)}
+                      />
+                      <Label htmlFor="terms" className="text-sm text-muted-foreground">
+                        Acepto los{' '}
+                        <Link href="/legal/terminos" className="text-primary underline" target="_blank">
+                          Términos y Condiciones
+                        </Link>{' '}
+                        y la{' '}
+                        <Link href="/legal/privacidad" className="text-primary underline" target="_blank">
+                          Política de Privacidad
+                        </Link>.
+                      </Label>
+                    </div>
                   </div>
                 )}
               </CardContent>

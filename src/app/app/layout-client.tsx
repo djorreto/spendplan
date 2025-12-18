@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { useAuth } from '@/hooks/use-auth'
 import { useHousehold } from '@/hooks/use-household'
 import { useSelectedMonth } from '@/hooks/use-selected-month'
@@ -13,10 +14,13 @@ import { CopilotChat, CopilotButton } from '@/components/copilot/copilot-chat'
 import { supabaseBrowser } from '@/lib/supabase'
 import { getMonthDateRange, getPreviousMonth } from '@/lib/utils'
 import type { FinancialContext } from '@/lib/ai/copilot'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
 
 // Demo mode constants
 const DEMO_BUDGET_KEY = 'spendplan_demo_budget_v2'
 const DEMO_EXPENSES_KEY = 'spendplan_demo_expenses'
+const TERMS_VERSION = 'v1.0'
 
 export function AppLayoutClient({ children }: { children: React.ReactNode }) {
   const router = useRouter()
@@ -25,6 +29,8 @@ export function AppLayoutClient({ children }: { children: React.ReactNode }) {
   const { selectedMonth } = useSelectedMonth(currentHousehold?.id)
   const [copilotOpen, setCopilotOpen] = useState(false)
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
+  const [acceptingTerms, setAcceptingTerms] = useState(false)
+  const [acceptError, setAcceptError] = useState<string | null>(null)
 
   const isDemo = isDemoMode && !!currentHousehold?.id?.startsWith('demo-')
 
@@ -349,6 +355,41 @@ export function AppLayoutClient({ children }: { children: React.ReactNode }) {
     }
   }, [authLoading, isAuthenticated, router])
 
+  const needsTermsAcceptance =
+    !!user &&
+    !!profile &&
+    (!profile.terms_accepted_at ||
+      profile.terms_version !== TERMS_VERSION ||
+      !profile.privacy_accepted_at ||
+      profile.privacy_version !== TERMS_VERSION)
+
+  const handleAcceptTerms = async () => {
+    if (!profile) return
+    setAcceptingTerms(true)
+    setAcceptError(null)
+    try {
+      const supabase = supabaseBrowser()
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          terms_accepted_at: new Date().toISOString(),
+          terms_version: TERMS_VERSION,
+          privacy_accepted_at: new Date().toISOString(),
+          privacy_version: TERMS_VERSION,
+        })
+        .eq('id', profile.id)
+      if (error) {
+        setAcceptError(error.message)
+      } else {
+        await loadHouseholds(true)
+      }
+    } catch (e: any) {
+      setAcceptError(e?.message || 'No se pudo guardar tu aceptación')
+    } finally {
+      setAcceptingTerms(false)
+    }
+  }
+
   // Redirect to onboarding if needed
   useEffect(() => {
     if (!authLoading && !householdLoading && isAuthenticated) {
@@ -414,6 +455,41 @@ export function AppLayoutClient({ children }: { children: React.ReactNode }) {
             />
           </div>
         </div>
+      )}
+
+      {/* Modal de aceptación de términos */}
+      {needsTermsAcceptance && (
+        <Dialog open>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Actualización de Términos y Privacidad</DialogTitle>
+              <DialogDescription>
+                Para continuar usando SpendPlan, acepta nuestros Términos y Condiciones y la Política de Privacidad.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3 text-sm text-muted-foreground">
+              <p>
+                Lee los documentos antes de continuar:{' '}
+                <Link href="/legal/terminos" className="text-primary underline" target="_blank">
+                  Términos y Condiciones
+                </Link>{' '}
+                y{' '}
+                <Link href="/legal/privacidad" className="text-primary underline" target="_blank">
+                  Política de Privacidad
+                </Link>.
+              </p>
+              <p>
+                Esta aceptación es obligatoria para continuar usando la aplicación. Versión: {TERMS_VERSION}.
+              </p>
+              {acceptError && <p className="text-destructive text-sm">{acceptError}</p>}
+            </div>
+            <DialogFooter className="flex justify-end gap-2">
+              <Button onClick={handleAcceptTerms} disabled={acceptingTerms}>
+                {acceptingTerms ? 'Guardando...' : 'Acepto y continuar'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
 
       {/* Copilot */}

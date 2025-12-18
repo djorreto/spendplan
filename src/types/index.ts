@@ -35,6 +35,10 @@ export interface Profile {
   preferred_currency: string
   onboarding_completed: boolean
   is_super_admin?: boolean
+  terms_accepted_at?: string | null
+  terms_version?: string | null
+  privacy_accepted_at?: string | null
+  privacy_version?: string | null
   created_at: string
   updated_at: string
   telegram_connected?: boolean | null
