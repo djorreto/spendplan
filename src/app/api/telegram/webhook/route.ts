@@ -121,8 +121,12 @@ async function handleMessage(message: TelegramMessage) {
     }
   }
 
+  // Ensure household selection (multi-hogar)
+  const ensuredLink = await ensureHouseholdSelection(chatId, odId, link)
+  if (!ensuredLink) return
+
   if (text) {
-    await handleConversationalText(chatId, odId, text, link)
+    await handleConversationalText(chatId, odId, text, ensuredLink)
     await touchTelegramActivity(odId)
     return
   }
@@ -183,6 +187,80 @@ function isTelegramSessionExpired(lastActivityAt: unknown): boolean {
   const ts = Date.parse(String(lastActivityAt))
   if (!Number.isFinite(ts)) return false
   return Date.now() - ts > TELEGRAM_SESSION_TIMEOUT_MS
+}
+
+type EnsureHouseholdOptions = {
+  silentIfAlreadySelected?: boolean
+}
+
+/**
+ * Ensure a household is selected for Telegram actions.
+ * - If el usuario tiene un solo hogar, lo fija automáticamente.
+ * - Si tiene varios, pide selección (inline keyboard) cuando no hay selección
+ *   válida o cuando la sesión expiró, para evitar dudas de a qué hogar se
+ *   aplican los gastos/consultas.
+ */
+async function ensureHouseholdSelection(
+  chatId: number,
+  telegramUserId: number,
+  link: any,
+  options: EnsureHouseholdOptions = {}
+): Promise<{ household_id: string; user_id: string } | null> {
+  if (!link) return null
+
+  const { silentIfAlreadySelected = true } = options
+
+  const supabase = getSupabase()
+  const { data: memberships } = await supabase
+    .from('household_memberships')
+    .select('household_id, households(name)')
+    .eq('user_id', link.user_id)
+    .eq('is_active', true)
+
+  const list = memberships || []
+  if (list.length === 0) {
+    await sendTelegramMessage(chatId, '❌ No tienes hogares activos en SpendPlan.', { reply_markup: mainKeyboard(true) })
+    return null
+  }
+
+  if (list.length === 1) {
+    const only = list[0]
+    if (only.household_id !== link.household_id) {
+      await supabase.from('telegram_links').update({ household_id: only.household_id }).eq('telegram_user_id', telegramUserId)
+    }
+    return { household_id: only.household_id, user_id: link.user_id }
+  }
+
+  const currentValid = list.some((m) => m.household_id === link.household_id)
+  const shouldPrompt =
+    !currentValid ||
+    isTelegramSessionExpired(link.last_activity_at) ||
+    !silentIfAlreadySelected
+
+  if (!shouldPrompt && currentValid) {
+    return { household_id: link.household_id, user_id: link.user_id }
+  }
+
+  const rows: any[][] = []
+  for (let i = 0; i < list.length; i += 2) {
+    const a = list[i]
+    const b = list[i + 1]
+    const row: any[] = [
+      { text: a.households?.name || 'Hogar', callback_data: `hh:${a.household_id}` },
+    ]
+    if (b) row.push({ text: b.households?.name || 'Hogar', callback_data: `hh:${b.household_id}` })
+    rows.push(row)
+  }
+
+  const currentName = list.find((m) => m.household_id === link.household_id)?.households?.name
+  await sendTelegramMessage(
+    chatId,
+    `🏠 Tienes varios hogares. Selecciona a cuál aplicar este chat.\n` +
+      (currentName ? `Actual: ${currentName}\n` : '') +
+      `Usaré el que elijas para gastos y consultas.`,
+    { reply_markup: { inline_keyboard: rows } }
+  )
+  return null
 }
 
 async function touchTelegramActivity(telegramUserId: number) {
@@ -825,6 +903,46 @@ async function handleCallbackQuery(cb: TelegramCallbackQuery) {
     return
   }
 
+  // Household selection (multi-hogar)
+  if (action === 'hh') {
+    const householdId = parts[1]
+    if (!householdId) return
+
+    const { data: link } = await supabase
+      .from('telegram_links')
+      .select('id, user_id')
+      .eq('telegram_user_id', cb.from.id)
+      .not('linked_at', 'is', null)
+      .single()
+    if (!link) return
+
+    const { data: membership } = await supabase
+      .from('household_memberships')
+      .select('household_id, households(name)')
+      .eq('user_id', link.user_id)
+      .eq('household_id', householdId)
+      .eq('is_active', true)
+      .maybeSingle()
+
+    if (!membership) {
+      await sendTelegramMessage(chatId, '❌ No tienes acceso a ese hogar.', { reply_markup: mainKeyboard(true) })
+      return
+    }
+
+    await supabase
+      .from('telegram_links')
+      .update({ household_id: householdId })
+      .eq('id', link.id)
+
+    await sendTelegramMessage(
+      chatId,
+      `✅ Hogar seleccionado: *${membership.households?.name || 'Hogar'}*.\n` +
+        'Los gastos y consultas se aplicarán a este hogar.',
+      { reply_markup: mainKeyboard(true) }
+    )
+    return
+  }
+
   if (action === 'confirm') {
     const expenseId = parts[1]
     if (!expenseId) return
@@ -993,6 +1111,11 @@ async function handleCommand(
         await sendTelegramMessage(chatId, '❌ Primero vincula tu cuenta con /vincular')
         return
       }
+      {
+        const ensured = await ensureHouseholdSelection(chatId, odId, link, { silentIfAlreadySelected: true })
+        if (!ensured) return
+        link = ensured
+      }
       await sendTelegramMessage(chatId,
         '📊 *Resumen del mes*\n\n' +
         'Para ver el resumen completo con gráficos,\n' +
@@ -1006,6 +1129,11 @@ async function handleCommand(
       if (!link) {
         await sendTelegramMessage(chatId, '❌ Primero vincula tu cuenta con /vincular')
         return
+      }
+      {
+        const ensuredAI = await ensureHouseholdSelection(chatId, odId, link, { silentIfAlreadySelected: true })
+        if (!ensuredAI) return
+        link = ensuredAI
       }
       await analyzeWithAI(chatId, args.join(' '))
       break
