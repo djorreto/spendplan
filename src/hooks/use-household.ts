@@ -296,26 +296,16 @@ export function useHousehold() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return { household: null, error: 'No autenticado' }
 
-      // Intentar crear en Supabase primero
-      // Crear hogar
-      const { data: household, error: householdError } = await supabase
-        .from('households')
-        .insert({ name, currency, timezone })
-        .select()
+      // Usar RPC para crear hogar + membresía owner en el mismo paso (evita RLS en el select)
+      const { data: household, error: rpcError } = await supabase
+        .rpc('create_household_with_owner', {
+          p_name: name,
+          p_currency: currency,
+          p_timezone: timezone,
+        })
         .single()
 
-      if (householdError) throw householdError
-
-      // Crear membresía como owner
-      const { error: membershipError } = await supabase
-        .from('household_memberships')
-        .insert({
-          household_id: household.id,
-          user_id: user.id,
-          role: 'owner',
-        })
-
-      if (membershipError) throw membershipError
+      if (rpcError) throw rpcError
 
       // Crear AI config por defecto (mock)
       await supabase
@@ -326,7 +316,7 @@ export function useHousehold() {
         })
 
       // Actualizar estado
-      await loadHouseholds()
+      await loadHouseholds(true)
       setCurrentHousehold(household)
 
       return { household, error: null }
