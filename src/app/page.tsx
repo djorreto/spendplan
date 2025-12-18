@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Logo } from '@/components/ui/logo'
+import { useAuth } from '@/hooks/use-auth'
 import { 
   ArrowRight, 
   CheckCircle, 
@@ -37,6 +38,7 @@ function PricingFeature({ children, included }: { children: React.ReactNode; inc
 
 export default function HomePage() {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const { user } = useAuth()
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background via-accent/5 to-background">
@@ -61,8 +63,10 @@ export default function HomePage() {
 
             {/* CTA Buttons */}
             <div className="hidden md:flex items-center space-x-3">
-              <Link href="/login">
-                <Button variant="ghost">Iniciar Sesión</Button>
+              <Link href={user ? '/app/dashboard' : '/login'}>
+                <Button variant="ghost">
+                  {user ? 'Ir a mi hogar' : 'Iniciar Sesión'}
+                </Button>
               </Link>
               <Link href="/login?mode=signup">
                 <Button>
