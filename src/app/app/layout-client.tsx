@@ -24,7 +24,7 @@ const TERMS_VERSION = 'v1.1'
 
 export function AppLayoutClient({ children }: { children: React.ReactNode }) {
   const router = useRouter()
-  const { user, profile, loading: authLoading, isAuthenticated } = useAuth()
+  const { user, profile, loading: authLoading, isAuthenticated, updateProfile } = useAuth()
   const { currentHousehold, households, isDemoMode, loading: householdLoading, error: householdError, loadHouseholds } = useHousehold()
   const { selectedMonth } = useSelectedMonth(currentHousehold?.id)
   const [copilotOpen, setCopilotOpen] = useState(false)
@@ -370,22 +370,15 @@ export function AppLayoutClient({ children }: { children: React.ReactNode }) {
     setAcceptingTerms(true)
     setAcceptError(null)
     try {
-      const supabase = supabaseBrowser()
-      const { error } = await supabase
-        .from('profiles')
-        .update({
-          terms_accepted_at: new Date().toISOString(),
-          terms_version: TERMS_VERSION,
-          privacy_accepted_at: new Date().toISOString(),
-          privacy_version: TERMS_VERSION,
-        })
-        .eq('id', profile.id)
-      if (error) {
-        setAcceptError(error.message)
-      } else {
-        setTermsAcceptedLocal(true)
-        await loadHouseholds(true)
-      }
+      const { error } = await updateProfile({
+        terms_accepted_at: new Date().toISOString(),
+        terms_version: TERMS_VERSION,
+        privacy_accepted_at: new Date().toISOString(),
+        privacy_version: TERMS_VERSION,
+      })
+      if (error) setAcceptError(error)
+      else setTermsAcceptedLocal(true)
+      await loadHouseholds(true)
     } catch (e: any) {
       setAcceptError(e?.message || 'No se pudo guardar tu aceptación')
     } finally {
