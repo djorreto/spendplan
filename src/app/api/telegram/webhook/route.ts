@@ -160,6 +160,7 @@ function mainKeyboard(isLinked: boolean) {
     keyboard: [
       [{ text: 'Resumen' }, { text: 'Balance' }],
       [{ text: 'Registrar gasto' }, { text: 'Últimos gastos' }],
+      [{ text: 'Cambiar hogar' }],
     ],
     resize_keyboard: true,
   }
@@ -176,6 +177,7 @@ function detectIntent(
   if (/(resumen|estado|c[oó]mo voy|seguimiento|insights|reporte)/i.test(t)) return 'summary'
   if (/(últimos|ultimos|recientes)/i.test(t)) return 'recent'
   if (/(registrar|anotar|agregar|cargar)\s+(un\s+)?gasto/i.test(t)) return 'new_expense'
+  if (t.includes('cambiar hogar') || t.includes('cambiar de hogar')) return 'change_household'
   // if it has an amount, it's likely an expense
   if (/\d{3,}/.test(t) && /(\$|clp|mil|lucas)?/.test(t)) return 'expense_like'
   // default to AI for free-form budget questions
@@ -332,6 +334,11 @@ async function handleConversationalText(
   if (intent === 'recent') {
     await sendTelegramMessage(chatId, 'Dame un segundo…', { reply_markup: mainKeyboard(true) })
     await sendRecentExpenses(chatId, link)
+    return
+  }
+
+  if (intent === 'change_household') {
+    await ensureHouseholdSelection(chatId, odId, link, { silentIfAlreadySelected: false })
     return
   }
 
