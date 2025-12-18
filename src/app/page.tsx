@@ -305,15 +305,15 @@ export default function HomePage() {
               </CardContent>
             </Card>
 
-            {/* Asesorías */}
+            {/* Acompañamiento */}
             <Card className="border-2">
               <CardContent className="p-8">
                 <div className="text-center mb-6">
                   <div className="w-16 h-16 rounded-2xl bg-secondary/10 flex items-center justify-center mx-auto mb-4">
                     <Users className="h-8 w-8 text-secondary" />
                   </div>
-                  <h3 className="text-2xl font-bold mb-2">Asesorías Financieras</h3>
-                  <p className="text-muted-foreground">Acompañamiento personalizado para mejorar tus finanzas (proyectado)</p>
+                  <h3 className="text-2xl font-bold mb-2">Acompañamiento Personalizado</h3>
+                  <p className="text-muted-foreground">Sesiones 1:1 y planes de acción (proyectado)</p>
                 </div>
 
                 <div className="bg-accent/50 rounded-xl p-4 mb-6 text-center">
@@ -321,7 +321,7 @@ export default function HomePage() {
                     🧩 Próximamente
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Estamos preparando asesorías 1:1 y planes de acción.
+                    Estamos preparando sesiones 1:1 y planes de acción.
                   </p>
                 </div>
 
@@ -364,11 +364,11 @@ export default function HomePage() {
               </details>
               <details className="group bg-background rounded-lg border p-4">
                 <summary className="font-medium cursor-pointer list-none flex items-center justify-between">
-                  ¿Tendrán asesorías financieras?
+                  ¿Tendrán acompañamiento personalizado?
                   <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
                 </summary>
                 <p className="mt-3 text-muted-foreground text-sm">
-                  Sí, es parte del roadmap. Si quieres ser de los primeros en probarlas, escríbenos a <a className="underline hover:text-foreground" href="mailto:djorreto@spendplan.cl">djorreto@spendplan.cl</a>.
+                  Sí, estamos preparando sesiones 1:1 y planes de acción. Si quieres ser de los primeros en probarlo, escríbenos a <a className="underline hover:text-foreground" href="mailto:djorreto@spendplan.cl">djorreto@spendplan.cl</a>.
                 </p>
               </details>
             </div>
