@@ -23,6 +23,8 @@ let authInFlight: Promise<void> | null = null
 type BetaCheckResult = { betaMode: boolean; allowed: boolean; error?: string }
 const allowlistCache = new Map<string, { value: BetaCheckResult; ts: number }>()
 const ALLOWLIST_CACHE_TTL_MS = 60_000
+const INACTIVITY_MS = 10 * 60 * 1000 // 10 minutos
+const LAST_ACTIVITY_KEY = 'sp:lastActivity'
 
 async function checkBetaAllowlist(email: string): Promise<BetaCheckResult> {
   const e = normalizeEmail(email)
@@ -338,6 +340,60 @@ export function useAuth() {
     setState({ user: null, profile: null, loading: false, error: null, isDemoMode: false })
     return { error: null }
   }, [supabase.auth, state.isDemoMode])
+
+  // Auto signout por inactividad (10 min) + cierre y reingreso posterior
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    let timer: ReturnType<typeof setTimeout> | null = null
+
+    const doLogout = async () => {
+      await signOut()
+      if (typeof window !== 'undefined') {
+        window.location.href = '/login?timeout=1'
+      }
+    }
+
+    const resetTimer = () => {
+      if (timer) clearTimeout(timer)
+      // Si no hay usuario, no programamos timer
+      if (!state.user) return
+      timer = setTimeout(() => {
+        void doLogout()
+      }, INACTIVITY_MS)
+    }
+
+    const updateActivity = () => {
+      try {
+        localStorage.setItem(LAST_ACTIVITY_KEY, Date.now().toString())
+      } catch {}
+      resetTimer()
+    }
+
+    // Al montar, si la última actividad fue hace más de INACTIVITY_MS, cerrar sesión
+    if (state.user) {
+      try {
+        const last = localStorage.getItem(LAST_ACTIVITY_KEY)
+        if (last) {
+          const diff = Date.now() - Number(last)
+          if (Number.isFinite(diff) && diff > INACTIVITY_MS) {
+            void doLogout()
+          }
+        }
+      } catch {}
+    }
+
+    // Escuchar eventos de actividad
+    const events = ['mousemove', 'keydown', 'touchstart', 'visibilitychange']
+    events.forEach((ev) => window.addEventListener(ev, updateActivity, { passive: true }))
+    // Arrancar timer si hay sesión
+    resetTimer()
+
+    return () => {
+      events.forEach((ev) => window.removeEventListener(ev, updateActivity))
+      if (timer) clearTimeout(timer)
+    }
+  }, [state.user, signOut])
 
   // Update profile
   const updateProfile = useCallback(async (updates: Partial<Profile>) => {

@@ -84,11 +84,11 @@ export function AppSidebar({
         isCollapsed ? 'justify-center' : 'justify-between'
       )}>
         {isCollapsed ? (
-          <Link href="/app/dashboard" onClick={onNavigate} className="inline-flex">
+          <Link href="/" onClick={onNavigate} className="inline-flex">
             <LogoIcon size="sm" />
           </Link>
         ) : (
-          <Link href="/app/dashboard" onClick={onNavigate} className="inline-flex items-center">
+          <Link href="/" onClick={onNavigate} className="inline-flex items-center">
             <Logo size="md" variant="white" />
           </Link>
         )}
