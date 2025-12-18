@@ -31,6 +31,7 @@ export function AppLayoutClient({ children }: { children: React.ReactNode }) {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
   const [acceptingTerms, setAcceptingTerms] = useState(false)
   const [acceptError, setAcceptError] = useState<string | null>(null)
+  const [termsAcceptedLocal, setTermsAcceptedLocal] = useState(false)
 
   const isDemo = isDemoMode && !!currentHousehold?.id?.startsWith('demo-')
 
@@ -358,6 +359,7 @@ export function AppLayoutClient({ children }: { children: React.ReactNode }) {
   const needsTermsAcceptance =
     !!user &&
     !!profile &&
+    !termsAcceptedLocal &&
     (!profile.terms_accepted_at ||
       profile.terms_version !== TERMS_VERSION ||
       !profile.privacy_accepted_at ||
@@ -381,6 +383,7 @@ export function AppLayoutClient({ children }: { children: React.ReactNode }) {
       if (error) {
         setAcceptError(error.message)
       } else {
+        setTermsAcceptedLocal(true)
         await loadHouseholds(true)
       }
     } catch (e: any) {
@@ -460,7 +463,7 @@ export function AppLayoutClient({ children }: { children: React.ReactNode }) {
       {/* Modal de aceptación de términos */}
       {needsTermsAcceptance && (
         <Dialog open>
-          <DialogContent>
+          <DialogContent hideClose>
             <DialogHeader>
               <DialogTitle>Actualización de Términos y Privacidad</DialogTitle>
               <DialogDescription>
