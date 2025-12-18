@@ -42,6 +42,13 @@ insert into storage.buckets (id, name, public)
 values ('legal', 'legal', true)
 on conflict (id) do nothing;
 
+-- Grants básicos (por si no existen default privileges)
+grant all on public.legal_documents to service_role;
+grant select on public.legal_documents to authenticated;
+
+grant all on public.legal_acceptances to service_role;
+grant select, insert on public.legal_acceptances to authenticated;
+
 alter table if exists public.legal_documents enable row level security;
 alter table if exists public.legal_acceptances enable row level security;
 
