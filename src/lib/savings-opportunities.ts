@@ -35,7 +35,17 @@ export type CriticalView = {
   totalOpportunity: number
 }
 
-type ClusterKind = 'delivery' | 'supermarket' | 'telecom' | 'streaming' | 'taxi' | 'other'
+type ClusterKind =
+  | 'delivery'
+  | 'supermarket'
+  | 'telecom'
+  | 'streaming'
+  | 'taxi'
+  | 'restaurant'
+  | 'water'
+  | 'gas'
+  | 'electricity'
+  | 'other'
 
 function fold(value: string): string {
   return value
@@ -87,6 +97,18 @@ function clusterOf(expense: OpportunityExpense): { key: string; label: string; k
   if (/jumbo|lider|unimarc|tottus|santa isabel|supermercado/.test(text) || fold(category) === 'supermercado') {
     return { key: 'supermarket', label: 'Supermercado', kind: 'supermarket' }
   }
+  if (fold(category) === 'restaurantes' || /restaurant|restoran/.test(text)) {
+    return { key: 'restaurant', label: 'Restoranes', kind: 'restaurant' }
+  }
+  if (/aguas andinas|esval|essbio|\bagua\b/.test(text)) {
+    return { key: 'water', label: 'Agua', kind: 'water' }
+  }
+  if (/metrogas|abastible|gasco|lipigas|\bgas\b/.test(text) && !/gast[oa] comun/.test(text)) {
+    return { key: 'gas', label: 'Gas', kind: 'gas' }
+  }
+  if (/enel|cge|chilectra|chilquinta|\bluz\b/.test(text)) {
+    return { key: 'electricity', label: 'Luz', kind: 'electricity' }
+  }
   if (/\bvtr\b/.test(text)) {
     return { key: 'vtr', label: 'VTR', kind: 'telecom' }
   }
@@ -124,7 +146,7 @@ function monthsInWindow(endMonth: string, count: number): string[] {
 export function buildCriticalView(
   expenses: OpportunityExpense[],
   month: string,
-  options?: { customGroups?: Record<string, string> }
+  options?: { customGroups?: Record<string, string>; fixedItems?: Array<{ name: string; amount: number }> }
 ): CriticalView {
   const monthsAnalyzed = monthsInWindow(month, 3)
   const confirmed = expenses.filter(
@@ -216,6 +238,7 @@ export function buildCriticalView(
       action:
         'Baja a 4 pedidos al mes y el resto al supermercado. El markup de la app + el envío es el ahorro.',
       monthlySavings: save,
+      topic: 'delivery',
       confidence: share >= 0.3 || delivery.count >= 8 ? 'alta' : 'media',
       evidence: [
         `Promedio delivery: $${Math.round(delivery.amount).toLocaleString('es-CL')} · ${delivery.count.toFixed(1)} pedidos/mes`,
@@ -239,6 +262,7 @@ export function buildCriticalView(
       action:
         'Una o dos compras grandes a la semana, lista hecha en casa, y menos visitas de relleno. 10–15% menos es realista.',
       monthlySavings: save,
+      topic: 'supermarket',
       confidence: supermarket.amount >= 500_000 ? 'alta' : 'media',
       evidence: [
         `Promedio súper: $${Math.round(supermarket.amount).toLocaleString('es-CL')}/mes`,
@@ -258,8 +282,9 @@ export function buildCriticalView(
       title: 'VTR se ve caro para lo que hay hoy en fibra',
       why: `Estás pagando ~$${Math.round(vtr.amount).toLocaleString('es-CL')} al mes. En Chile un plan solo fibra suele estar entre $17 y $30 mil; el pack TV+internet de cable se va fácil sobre $40 mil.`,
       action:
-        'Cotiza Mundo, GTD o Movistar Fibra. Si no usan el pack de TV, suéltalo. No es un precio en vivo: es para que compares.',
+        'Abre el asistente: te pregunta el plan, te compara con fibra de agosto 2026 y te arma a quién llamar y cómo cortar VTR.',
       monthlySavings: save,
+      topic: 'internet',
       confidence: vtr.amount >= 40_000 ? 'alta' : 'media',
       evidence: [
         `Cargo típico VTR: $${Math.round(vtr.amount).toLocaleString('es-CL')}/mes`,
@@ -276,6 +301,7 @@ export function buildCriticalView(
       why: `Zapping, Netflix y similares suman ~$${Math.round(streaming.amount).toLocaleString('es-CL')} al mes. Casi nunca se usan todas.`,
       action: 'Deja una o dos. Rota el resto por temporadas.',
       monthlySavings: Math.round(streaming.amount * 0.35),
+      topic: 'streaming',
       confidence: 'media',
       evidence: [`Promedio streaming: $${Math.round(streaming.amount).toLocaleString('es-CL')}/mes`],
     })
@@ -289,10 +315,59 @@ export function buildCriticalView(
       why: `~${taxi.count.toFixed(1)} viajes al mes por $${Math.round(taxi.amount).toLocaleString('es-CL')}.`,
       action: 'Junta recados, usa un viaje compartido o deja 2–3 viajes de “por flojera”.',
       monthlySavings: Math.round(taxi.amount * 0.3),
+      topic: 'transport',
       confidence: 'media',
       evidence: [`Promedio Uber/taxis: $${Math.round(taxi.amount).toLocaleString('es-CL')}/mes`],
     })
   }
+
+  const restaurant = avgCluster('restaurant')
+  if (restaurant.amount >= 80_000 || restaurant.count >= 4) {
+    opportunities.push({
+      id: 'demand-restaurants',
+      kind: 'demand',
+      title: 'Las salidas a restorán se están comiendo el mes',
+      why: `Promedias $${Math.round(restaurant.amount).toLocaleString('es-CL')} al mes en restorán.`,
+      action: 'Abre el asistente: tope de salidas, menú vs cena, y qué reemplazar con comida de la casa.',
+      monthlySavings: Math.round(restaurant.amount * 0.25),
+      topic: 'restaurants',
+      confidence: restaurant.amount >= 150_000 ? 'alta' : 'media',
+      evidence: [`Promedio restorán: $${Math.round(restaurant.amount).toLocaleString('es-CL')} · ${restaurant.count.toFixed(1)} veces/mes`],
+    })
+  }
+
+  const addUtility = (
+    key: 'water' | 'gas' | 'electricity',
+    topic: 'water' | 'gas' | 'electricity',
+    title: string,
+    minAmount: number
+  ) => {
+    const fromExpenses = avgCluster(key)
+    const fromPlan = (options?.fixedItems || []).find((item) => {
+      const name = item.name.toLowerCase()
+      if (key === 'water') return name.includes('agua')
+      if (key === 'gas') return /\bgas\b/.test(name) && !name.includes('común') && !name.includes('comun')
+      return name.includes('luz') || name.includes('enel') || name.includes('electric')
+    })
+    const amount = Math.max(fromExpenses.amount, fromPlan?.amount || 0)
+    if (amount < minAmount) return
+    opportunities.push({
+      id: `demand-${key}`,
+      kind: 'demand',
+      title,
+      why: `Este hogar destina ~$${Math.round(amount).toLocaleString('es-CL')} al mes. No se cambia de “plan” como el internet: se baja consumo y se cazan fugas.`,
+      action: 'Abre el asistente: te pregunta el tipo de casa y te arma hábitos + a quién llamar si la boleta está rara.',
+      monthlySavings: Math.round(amount * 0.12),
+      topic,
+      confidence: 'media',
+      evidence: [
+        fromPlan ? `Fijo del plan: ${fromPlan.name} $${Math.round(fromPlan.amount).toLocaleString('es-CL')}` : `Promedio en gastos: $${Math.round(fromExpenses.amount).toLocaleString('es-CL')}`,
+      ],
+    })
+  }
+  addUtility('water', 'water', 'El agua da para recortar (fuga, jardín, ducha)', 35_000)
+  addUtility('electricity', 'electricity', 'La luz está para una revisión de hábitos', 80_000)
+  addUtility('gas', 'gas', 'El gas se puede bajar sin pasar frío', 25_000)
 
   const topGroup = groups[0]
   if (topGroup && topGroup.share >= 0.35 && topGroup.key === 'Alimentación' && !opportunities.some((item) => item.id.startsWith('demand-'))) {
@@ -303,6 +378,7 @@ export function buildCriticalView(
       why: `Alimentación se lleva ${Math.round(topGroup.share * 100)}% de lo gastado este mes.`,
       action: 'Separa súper, delivery y restorán. El delivery es el primero que recortar.',
       monthlySavings: Math.round(topGroup.amount * 0.1),
+      topic: 'supermarket',
       confidence: 'media',
       evidence: [`Este mes en alimentación: $${Math.round(topGroup.amount).toLocaleString('es-CL')}`],
     })

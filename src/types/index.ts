@@ -336,6 +336,7 @@ export interface SavingsOpportunity {
   monthlySavings: number
   confidence: 'alta' | 'media' | 'baja'
   evidence: string[]
+  topic?: string
 }
 
 export interface InsightFlag {

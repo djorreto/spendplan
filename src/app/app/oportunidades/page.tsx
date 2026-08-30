@@ -39,7 +39,19 @@ import {
 } from '@/lib/savings-opportunities'
 import { cn, formatCurrency, formatDate, formatMonth, getMonthDateRange } from '@/lib/utils'
 import type { SavingsOpportunity } from '@/types'
-import { ArrowDown, ArrowUp, ArrowUpDown, Lightbulb, ShoppingCart, Tag, TrendingDown, X } from 'lucide-react'
+import { EfficiencyAssistant } from '@/components/efficiency/efficiency-assistant'
+import {
+  buildTopicSpend,
+  filterFixedForTopic,
+  type FixedPlanHint,
+} from '@/lib/efficiency-context'
+import {
+  EFFICIENCY_TOPIC_META,
+  isEfficiencyTopic,
+  resolveEfficiencyTopic,
+  type EfficiencyTopic,
+} from '@/lib/efficiency-playbooks'
+import { ArrowDown, ArrowUp, ArrowUpDown, Lightbulb, MessageCircle, ShoppingCart, Tag, TrendingDown, X } from 'lucide-react'
 
 type DrillFocus = { type: 'group' | 'merchant'; key: string; label: string }
 type DetailSortKey = 'date' | 'merchant' | 'category' | 'amount'
@@ -120,15 +132,19 @@ function kindLabel(kind: SavingsOpportunity['kind']) {
 }
 
 export default function OportunidadesPage() {
-  const { currentHousehold } = useHousehold()
+  const { currentHousehold, members } = useHousehold()
   const { selectedMonth } = useSelectedMonth(currentHousehold?.id)
   const { addToast } = useToast()
   const [loading, setLoading] = useState(true)
   const [view, setView] = useState<CriticalView | null>(null)
+  const [expenses, setExpenses] = useState<OpportunityExpense[]>([])
+  const [fixedItems, setFixedItems] = useState<FixedPlanHint[]>([])
   const [focus, setFocus] = useState<DrillFocus | null>(null)
   const [sortKey, setSortKey] = useState<DetailSortKey>('date')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [filters, setFilters] = useState<DetailFilters>(EMPTY_FILTERS)
+  const [assistantTopic, setAssistantTopic] = useState<EfficiencyTopic | null>(null)
+  const [assistantOpportunity, setAssistantOpportunity] = useState<SavingsOpportunity | null>(null)
   const detailRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -140,14 +156,22 @@ export default function OportunidadesPage() {
       const start = getMonthDateRange(shiftMonth(selectedMonth, -2)).start
       const end = getMonthDateRange(selectedMonth).endExclusive
       const supabase = supabaseBrowser()
-      const { data, error } = await supabase
-        .from('expenses')
-        .select('id, amount, merchant, description, expense_date, category_id, status, ai_adjustment, category:categories!expenses_category_id_fkey(name)')
-        .eq('household_id', currentHousehold.id)
-        .gte('expense_date', start)
-        .lt('expense_date', end)
-        .neq('status', 'cancelled')
-        .limit(3000)
+      const [{ data, error }, { data: fixedRows }] = await Promise.all([
+        supabase
+          .from('expenses')
+          .select('id, amount, merchant, description, expense_date, category_id, status, ai_adjustment, category:categories!expenses_category_id_fkey(name)')
+          .eq('household_id', currentHousehold.id)
+          .gte('expense_date', start)
+          .lt('expense_date', end)
+          .neq('status', 'cancelled')
+          .limit(3000),
+        supabase
+          .from('budget_items')
+          .select('name, amount, kind, type, is_active')
+          .eq('household_id', currentHousehold.id)
+          .eq('kind', 'expense')
+          .eq('type', 'fixed'),
+      ])
 
       if (cancelled) return
       if (error) {
@@ -156,9 +180,16 @@ export default function OportunidadesPage() {
         return
       }
 
+      const rows = (data || []) as OpportunityExpense[]
+      const plan = (fixedRows || [])
+        .filter((item) => item.is_active !== false)
+        .map((item) => ({ name: String(item.name || ''), amount: Number(item.amount) || 0 }))
+      setExpenses(rows)
+      setFixedItems(plan)
       setView(
-        buildCriticalView((data || []) as OpportunityExpense[], selectedMonth, {
+        buildCriticalView(rows, selectedMonth, {
           customGroups: currentHousehold.settings?.category_groups,
+          fixedItems: plan,
         })
       )
       setLoading(false)
@@ -240,6 +271,11 @@ export default function OportunidadesPage() {
     setSortDir('desc')
   }
 
+  function openAssistant(topic: EfficiencyTopic, opportunity?: SavingsOpportunity | null) {
+    setAssistantOpportunity(opportunity || null)
+    setAssistantTopic(topic)
+  }
+
   function toggleSort(key: DetailSortKey) {
     if (sortKey === key) {
       setSortDir((current) => (current === 'asc' ? 'desc' : 'asc'))
@@ -260,9 +296,24 @@ export default function OportunidadesPage() {
       <div>
         <h1 className="text-3xl font-bold">Oportunidades</h1>
         <p className="text-muted-foreground mt-1">
-          Dónde se va la plata en {formatMonth(selectedMonth)} y dónde hay chance de bajar:
-          por hábito (demanda) o cotizando mejor (precio).
+          Dónde se va la plata en {formatMonth(selectedMonth)} y un asistente que te arma el recorte
+          en serio: qué tienes, qué te conviene, alternativas y a quién llamar.
         </p>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {EFFICIENCY_TOPIC_META.map((item) => (
+          <Button
+            key={item.id}
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => openAssistant(item.id)}
+          >
+            <MessageCircle className="h-3.5 w-3.5 mr-1" />
+            {item.label}
+          </Button>
+        ))}
       </div>
 
       {loading || !view ? (
@@ -405,6 +456,23 @@ export default function OportunidadesPage() {
                     </CardDescription>
                   </div>
                   <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        openAssistant(
+                          resolveEfficiencyTopic({
+                            group: focus.type === 'group' ? focus.key : undefined,
+                            merchant: focus.type === 'merchant' ? focus.label : undefined,
+                            text: focus.label,
+                          })
+                        )
+                      }
+                    >
+                      <MessageCircle className="h-4 w-4 mr-1" />
+                      Revisar
+                    </Button>
                     {filtersActive ? (
                       <Button type="button" variant="outline" size="sm" onClick={() => setFilters(EMPTY_FILTERS)}>
                         Limpiar filtros
@@ -614,6 +682,21 @@ export default function OportunidadesPage() {
                           <li key={line}>· {line}</li>
                         ))}
                       </ul>
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() =>
+                          openAssistant(
+                            isEfficiencyTopic(item.topic || '')
+                              ? item.topic
+                              : resolveEfficiencyTopic({ opportunityId: item.id, text: item.title }),
+                            item
+                          )
+                        }
+                      >
+                        <MessageCircle className="h-4 w-4 mr-1" />
+                        Buscar eficiencia
+                      </Button>
                     </CardContent>
                   </Card>
                 ))}
@@ -625,8 +708,9 @@ export default function OportunidadesPage() {
             <CardContent className="p-4 text-sm flex flex-col sm:flex-row sm:items-center gap-3">
               <Lightbulb className="h-5 w-5 shrink-0 text-amber-600" />
               <p className="flex-1 text-muted-foreground">
-                Los montos de ahorro son una guía, no una promesa. El de precio (VTR, streaming)
-                hay que cotizarlo; el de demanda lo controlas tú la próxima compra.
+                Los montos de la vista son una guía. El asistente usa tus boletas y un
+                snapshot de mercado Chile (fibra agosto 2026). Confirma precio y factibilidad
+                antes de contratar.
               </p>
               <Button asChild variant="outline" size="sm">
                 <Link href="/app/expenses">
@@ -638,6 +722,39 @@ export default function OportunidadesPage() {
           </Card>
         </>
       )}
+
+      {assistantTopic ? (
+        <EfficiencyAssistant
+          open
+          topic={assistantTopic}
+          context={{
+            householdName: currentHousehold?.name || 'Este hogar',
+            memberCount: members?.length || 0,
+            month: selectedMonth,
+            currency,
+            opportunity: assistantOpportunity
+              ? {
+                  id: assistantOpportunity.id,
+                  title: assistantOpportunity.title,
+                  why: assistantOpportunity.why,
+                  action: assistantOpportunity.action,
+                  monthlySavings: assistantOpportunity.monthlySavings,
+                  evidence: assistantOpportunity.evidence,
+                }
+              : null,
+            spend: buildTopicSpend(expenses, assistantTopic, selectedMonth),
+            fixedPlan: filterFixedForTopic(fixedItems, assistantTopic),
+          }}
+          onTopicChange={(next) => {
+            setAssistantOpportunity(null)
+            setAssistantTopic(next)
+          }}
+          onClose={() => {
+            setAssistantTopic(null)
+            setAssistantOpportunity(null)
+          }}
+        />
+      ) : null}
     </div>
   )
 }
