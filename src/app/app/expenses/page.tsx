@@ -3,7 +3,6 @@
 export const dynamic = 'force-dynamic'
 
 import { useState, useEffect, useMemo } from 'react'
-import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -31,16 +30,28 @@ import { useAuth } from '@/hooks/use-auth'
 import { useSelectedMonth } from '@/hooks/use-selected-month'
 import { useToast } from '@/components/ui/toast'
 import { supabaseBrowser } from '@/lib/supabase'
-import { formatCurrency, formatDate, getCurrentDate, getCategoryColor, getMonthDateRange, getPaymentMethodLabel, paymentMethodLabels } from '@/lib/utils'
+import { formatCurrency, formatDate, getCurrentDate, getCategoryColor, getMonthDateRange, paymentMethodLabels } from '@/lib/utils'
+import {
+  originalExpenseDetail,
+  originalExpenseText,
+  resolveCategoryParts,
+} from '@/lib/category-taxonomy'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableFooter,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import { 
   Plus, 
-  Search,
-  Filter,
+  ArrowUpDown,
   MoreVertical,
   Pencil,
   Trash2,
   Receipt,
-  Tag,
   Camera,
   Check
 } from 'lucide-react'
@@ -156,7 +167,11 @@ export default function ExpensesPage() {
   const [categories, setCategories] = useState<Category[]>([])
   const [budgetedCategoryIds, setBudgetedCategoryIds] = useState<string[]>([]) // Categories with variable budget
   const [searchQuery, setSearchQuery] = useState('')
+  const [filterGroup, setFilterGroup] = useState<string>('all')
   const [filterCategory, setFilterCategory] = useState<string>('all')
+  const [filterStatus, setFilterStatus] = useState<string>('all')
+  const [sortKey, setSortKey] = useState<'date' | 'text' | 'group' | 'sub' | 'amount'>('date')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const filterMonth = selectedMonth
   
   // Dialog state
@@ -544,25 +559,82 @@ export default function ExpensesPage() {
     }
   }
 
-  // Filter expenses
-  const filteredExpenses = expenses.filter(expense => {
-    if (expense.status === 'cancelled') return false
+  const rows = useMemo(() => {
+    return expenses
+      .filter((expense) => expense.status !== 'cancelled')
+      .map((expense) => {
+        const category = (expense.category as Category | undefined) || categories.find((c) => c.id === expense.category_id)
+        const parts = resolveCategoryParts(category, categories)
+        return {
+          expense,
+          category,
+          group: parts.group,
+          subcategory: parts.subcategory,
+          original: originalExpenseText(expense),
+          detail: originalExpenseDetail(expense),
+        }
+      })
+  }, [expenses, categories])
 
-    const matchesSearch = !searchQuery || 
-      expense.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      expense.merchant?.toLowerCase().includes(searchQuery.toLowerCase())
-    
-    const matchesCategory = filterCategory === 'all' || expense.category_id === filterCategory
+  const groupOptions = useMemo(
+    () => [...new Set(rows.map((row) => row.group))].sort((a, b) => a.localeCompare(b, 'es')),
+    [rows]
+  )
 
-    return matchesSearch && matchesCategory
-  })
+  const subcategoryOptions = useMemo(() => {
+    const filtered = filterGroup === 'all' ? rows : rows.filter((row) => row.group === filterGroup)
+    const byId = new Map<string, string>()
+    for (const row of filtered) {
+      if (row.expense.category_id && row.subcategory !== '—') {
+        byId.set(row.expense.category_id, row.subcategory)
+      }
+    }
+    return [...byId.entries()]
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'es'))
+  }, [rows, filterGroup])
 
-  const pendingCount = filteredExpenses.filter((e) => e.status === 'pending').length
+  const filteredExpenses = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
+    const next = rows.filter((row) => {
+      const matchesSearch =
+        !q ||
+        row.original.toLowerCase().includes(q) ||
+        (row.detail || '').toLowerCase().includes(q) ||
+        row.group.toLowerCase().includes(q) ||
+        row.subcategory.toLowerCase().includes(q) ||
+        (row.expense.notes || '').toLowerCase().includes(q)
+      const matchesGroup = filterGroup === 'all' || row.group === filterGroup
+      const matchesCategory = filterCategory === 'all' || row.expense.category_id === filterCategory
+      const matchesStatus = filterStatus === 'all' || row.expense.status === filterStatus
+      return matchesSearch && matchesGroup && matchesCategory && matchesStatus
+    })
 
-  // Calculate total
+    const dir = sortDir === 'asc' ? 1 : -1
+    next.sort((a, b) => {
+      if (sortKey === 'amount') return (a.expense.amount - b.expense.amount) * dir
+      if (sortKey === 'date') return a.expense.expense_date.localeCompare(b.expense.expense_date) * dir
+      if (sortKey === 'text') return a.original.localeCompare(b.original, 'es') * dir
+      if (sortKey === 'group') return a.group.localeCompare(b.group, 'es') * dir
+      return a.subcategory.localeCompare(b.subcategory, 'es') * dir
+    })
+    return next
+  }, [rows, searchQuery, filterGroup, filterCategory, filterStatus, sortKey, sortDir])
+
+  const pendingCount = filteredExpenses.filter((row) => row.expense.status === 'pending').length
+
   const totalFiltered = filteredExpenses
-    .filter((e) => e.status === 'confirmed')
-    .reduce((sum, e) => sum + e.amount, 0)
+    .filter((row) => row.expense.status === 'confirmed')
+    .reduce((sum, row) => sum + row.expense.amount, 0)
+
+  const toggleSort = (key: typeof sortKey) => {
+    if (sortKey === key) {
+      setSortDir((current) => (current === 'asc' ? 'desc' : 'asc'))
+      return
+    }
+    setSortKey(key)
+    setSortDir(key === 'amount' || key === 'date' ? 'desc' : 'asc')
+  }
 
   return (
     <div className="space-y-6">
@@ -571,7 +643,8 @@ export default function ExpensesPage() {
         <div>
           <h1 className="text-3xl font-bold">Gastos</h1>
           <p className="text-muted-foreground">
-            {filteredExpenses.length} gastos · Total: {formatCurrency(totalFiltered, currentHousehold?.currency)}
+            {filteredExpenses.length} filas · Total confirmado:{' '}
+            {formatCurrency(totalFiltered, currentHousehold?.currency)}
           </p>
         </div>
         <div className="flex gap-2">
@@ -596,51 +669,57 @@ export default function ExpensesPage() {
         </Card>
       )}
 
-      {/* Instrucciones rápidas */}
-      <Card className="bg-muted/20 border-dashed">
-        <CardContent className="p-4 space-y-2 text-sm text-muted-foreground">
-          <p className="text-base font-semibold text-foreground">Cómo funciona</p>
-          <ul className="list-disc pl-4 space-y-1">
-            <li>El objetivo es registrar gastos reales.</li>
-            <li>Si la categoría tiene presupuesto variable activo este mes, el gasto descuenta ese presupuesto y se muestra en las vistas “Presupuesto” y “Mes a Mes”.</li>
-            <li>Si la categoría del gasto que crees no tiene presupuesto activo, el gasto queda como “No presupuestado”.</li>
-            <li>Usa la fecha correcta: sólo afecta el mes al que pertenece el gasto.</li>
-            <li>“Escanear boleta” precarga datos; puedes ajustar antes de guardar.</li>
-            <li>Recuerda que puedes cargar gastos también mediante Telegram.</li>
-          </ul>
-        </CardContent>
-      </Card>
-
-      {/* Filters */}
       <Card>
-        <CardContent className="p-4">
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Buscar por descripción o comercio..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            <Select value={filterCategory} onValueChange={setFilterCategory}>
-              <SelectTrigger className="w-[180px]">
-                <Tag className="h-4 w-4 mr-2" />
+        <CardContent className="p-3 space-y-3">
+          <div className="grid gap-2 md:grid-cols-4">
+            <Input
+              placeholder="Filtrar texto original, categoría..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="h-9"
+            />
+            <Select
+              value={filterGroup}
+              onValueChange={(value) => {
+                setFilterGroup(value)
+                setFilterCategory('all')
+              }}
+            >
+              <SelectTrigger className="h-9">
                 <SelectValue placeholder="Categoría" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todas las categorías</SelectItem>
-                {categories.map(cat => (
-                  <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
+                {groupOptions.map((group) => (
+                  <SelectItem key={group} value={group}>{group}</SelectItem>
                 ))}
+              </SelectContent>
+            </Select>
+            <Select value={filterCategory} onValueChange={setFilterCategory}>
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder="Subcategoría" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas las subcategorías</SelectItem>
+                {subcategoryOptions.map((item) => (
+                  <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={filterStatus} onValueChange={setFilterStatus}>
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder="Estado" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos los estados</SelectItem>
+                <SelectItem value="confirmed">Confirmados</SelectItem>
+                <SelectItem value="pending">Pendientes</SelectItem>
               </SelectContent>
             </Select>
           </div>
         </CardContent>
       </Card>
 
-      {/* Expenses List */}
       <Card>
         <CardContent className="p-0">
           {loading ? (
@@ -655,83 +734,126 @@ export default function ExpensesPage() {
               </Button>
             </div>
           ) : (
-            <div className="divide-y">
-              {filteredExpenses.map((expense) => {
-                const category = expense.category as Category | undefined
-                return (
-                  <div key={expense.id} className="flex items-center gap-4 p-4 hover:bg-muted/50 transition-colors">
-                    <div 
-                      className="w-10 h-10 rounded-lg flex items-center justify-center"
-                      style={{ backgroundColor: category ? getCategoryColor(category.name) + '20' : '#9ca3af20' }}
+            <div className="overflow-auto max-h-[70vh]">
+              <Table className="min-w-[860px]">
+                <TableHeader className="sticky top-0 z-10 bg-background shadow-sm">
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="h-9 w-[108px] px-2">
+                      <button type="button" className="inline-flex items-center gap-1" onClick={() => toggleSort('date')}>
+                        Fecha <ArrowUpDown className="h-3 w-3" />
+                      </button>
+                    </TableHead>
+                    <TableHead className="h-9 px-2">
+                      <button type="button" className="inline-flex items-center gap-1" onClick={() => toggleSort('text')}>
+                        Texto original <ArrowUpDown className="h-3 w-3" />
+                      </button>
+                    </TableHead>
+                    <TableHead className="h-9 w-[140px] px-2">
+                      <button type="button" className="inline-flex items-center gap-1" onClick={() => toggleSort('group')}>
+                        Categoría <ArrowUpDown className="h-3 w-3" />
+                      </button>
+                    </TableHead>
+                    <TableHead className="h-9 w-[160px] px-2">
+                      <button type="button" className="inline-flex items-center gap-1" onClick={() => toggleSort('sub')}>
+                        Subcategoría <ArrowUpDown className="h-3 w-3" />
+                      </button>
+                    </TableHead>
+                    <TableHead className="h-9 w-[120px] px-2 text-right">
+                      <button type="button" className="inline-flex items-center gap-1 ml-auto" onClick={() => toggleSort('amount')}>
+                        Monto <ArrowUpDown className="h-3 w-3" />
+                      </button>
+                    </TableHead>
+                    <TableHead className="h-9 w-[44px] px-1" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredExpenses.map(({ expense, category, group, subcategory, original, detail }) => (
+                    <TableRow
+                      key={expense.id}
+                      className={expense.status === 'pending' ? 'bg-amber-50/70 dark:bg-amber-950/20' : undefined}
                     >
-                      <Receipt 
-                        className="h-5 w-5" 
-                        style={{ color: category ? getCategoryColor(category.name) : '#9ca3af' }}
-                      />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium truncate">
-                        {expense.merchant || expense.description || 'Gasto'}
-                      </p>
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground flex-wrap">
-                        <span>{formatDate(expense.expense_date)}</span>
-                        <span>·</span>
-                        <span>{getPaymentMethodLabel(expense.payment_method)}</span>
-                        {category && (
-                          <>
-                            <span>·</span>
-                            <Badge variant="secondary" className="text-xs">
-                              {category.name}
-                            </Badge>
-                          </>
-                        )}
-                      </div>
-                      {expense.status === 'pending' && expense.ai_reason && (
-                        <p className="text-xs text-muted-foreground mt-1 truncate">
-                          IA: {expense.ai_reason}
-                          {expense.ai_confidence
-                            ? ` (${Math.round(Number(expense.ai_confidence) * 100)}%)`
-                            : ''}
-                        </p>
-                      )}
-                    </div>
-                    <div className="text-right">
-                      <p className="font-semibold tabular-nums">
-                        {formatCurrency(expense.amount, currentHousehold?.currency)}
-                      </p>
-                      {expense.status === 'pending' && (
-                        <Badge variant="outline" className="text-xs">Pendiente</Badge>
-                      )}
-                    </div>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon">
-                          <MoreVertical className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        {expense.status === 'pending' && (
-                          <DropdownMenuItem onClick={() => handleConfirm(expense.id)}>
-                            <Check className="mr-2 h-4 w-4" />
-                            Confirmar
-                          </DropdownMenuItem>
-                        )}
-                        <DropdownMenuItem onClick={() => openEditExpense(expense)}>
-                          <Pencil className="mr-2 h-4 w-4" />
-                          Editar
-                        </DropdownMenuItem>
-                        <DropdownMenuItem 
-                          onClick={() => handleDelete(expense.id)}
-                          className="text-destructive"
+                      <TableCell className="px-2 py-1.5 text-xs text-muted-foreground whitespace-nowrap">
+                        {formatDate(expense.expense_date)}
+                      </TableCell>
+                      <TableCell className="px-2 py-1.5">
+                        <button
+                          type="button"
+                          className="text-left w-full"
+                          onClick={() => openEditExpense(expense)}
                         >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Eliminar
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                )
-              })}
+                          <p className="font-medium leading-tight">{original}</p>
+                          {detail && (
+                            <p className="text-xs text-muted-foreground leading-tight">{detail}</p>
+                          )}
+                          {expense.status === 'pending' && expense.ai_reason && (
+                            <p className="text-xs text-amber-700 dark:text-amber-400 leading-tight mt-0.5">
+                              IA: {expense.ai_reason}
+                            </p>
+                          )}
+                        </button>
+                      </TableCell>
+                      <TableCell className="px-2 py-1.5 text-sm">{group}</TableCell>
+                      <TableCell className="px-2 py-1.5">
+                        <span
+                          className="inline-flex items-center rounded px-1.5 py-0.5 text-xs"
+                          style={{
+                            backgroundColor: category ? getCategoryColor(category.name) + '22' : undefined,
+                            color: category ? getCategoryColor(category.name) : undefined,
+                          }}
+                        >
+                          {subcategory}
+                        </span>
+                      </TableCell>
+                      <TableCell className="px-2 py-1.5 text-right tabular-nums font-medium whitespace-nowrap">
+                        <div>{formatCurrency(expense.amount, currentHousehold?.currency)}</div>
+                        {expense.status === 'pending' && (
+                          <Badge variant="outline" className="text-[10px]">Pendiente</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="px-1 py-1.5">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            {expense.status === 'pending' && (
+                              <DropdownMenuItem onClick={() => handleConfirm(expense.id)}>
+                                <Check className="mr-2 h-4 w-4" />
+                                Confirmar
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuItem onClick={() => openEditExpense(expense)}>
+                              <Pencil className="mr-2 h-4 w-4" />
+                              Editar
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => handleDelete(expense.id)}
+                              className="text-destructive"
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Eliminar
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+                <TableFooter>
+                  <TableRow>
+                    <TableCell colSpan={4} className="px-2 py-2 text-sm">
+                      {filteredExpenses.length} filas
+                      {pendingCount > 0 ? ` · ${pendingCount} pendientes` : ''}
+                    </TableCell>
+                    <TableCell className="px-2 py-2 text-right tabular-nums font-semibold">
+                      {formatCurrency(totalFiltered, currentHousehold?.currency)}
+                    </TableCell>
+                    <TableCell />
+                  </TableRow>
+                </TableFooter>
+              </Table>
             </div>
           )}
         </CardContent>
