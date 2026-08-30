@@ -34,6 +34,7 @@ import { startOp, endOp, formatSupabaseError, withRetry } from '@/lib/debug-log'
 import { useToast } from '@/components/ui/toast'
 import type { BudgetItem, Expense, Category } from '@/types'
 import { categoryGroupName, resolveCategoryParts } from '@/lib/category-taxonomy'
+import { ExpenseQuickEdit } from '@/components/expenses/expense-quick-edit'
 import { Edit2, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react'
 
 type LineKind = 'income' | 'fixed' | 'variable' | 'unbudgeted' | 'summary'
@@ -448,6 +449,20 @@ export default function MonthlyPage() {
     [lineMeta, filterClass, filterExpenseType, filterGroup, filterSub, searchQuery]
   )
 
+  const applyExpensePatch = (id: string, patch: Partial<Expense> & { category?: Category | null }) => {
+    setExpenses((prev) =>
+      prev.map((item) =>
+        item.id === id
+          ? ({
+              ...item,
+              ...patch,
+              category: patch.category !== undefined ? patch.category : item.category,
+            } as Expense)
+          : item
+      )
+    )
+  }
+
   const showUnbudgeted = matchesLine('unbudgeted', 'Otros', 'No presupuestado', 'No presupuestado')
   const showSummary = matchesLine('summary', 'Totales', 'Resumen', 'Balance')
 
@@ -486,7 +501,7 @@ export default function MonthlyPage() {
         withRetry(
           () => supabase
             .from('expenses')
-            .select('id, amount, expense_date, category_id, is_unbudgeted, description, merchant')
+            .select('id, amount, expense_date, category_id, is_unbudgeted, description, merchant, notes')
             .eq('household_id', currentHousehold.id)
             .gte('expense_date', rangeStart)
             .lt('expense_date', rangeEndExclusive)
@@ -803,6 +818,13 @@ export default function MonthlyPage() {
                                     <p className="text-[11px] sm:text-xs text-muted-foreground">
                                       {String(exp.expense_date).slice(0, 10)} • {exp.description || exp.merchant || 'Gasto'}
                                     </p>
+                                    <ExpenseQuickEdit
+                                      expense={exp}
+                                      categories={categories}
+                                      budgetedCategoryIds={[...variableCategoryIds]}
+                                      onPatched={applyExpensePatch}
+                                      compact
+                                    />
                                   </div>
                                 ))}
                               </div>
@@ -893,6 +915,13 @@ export default function MonthlyPage() {
                                 <p className="text-[11px] sm:text-xs text-muted-foreground">
                                   {String(exp.expense_date).slice(0, 10)} • {exp.description || exp.merchant || 'Gasto'}
                                 </p>
+                                <ExpenseQuickEdit
+                                  expense={exp}
+                                  categories={categories}
+                                  budgetedCategoryIds={[...variableCategoryIds]}
+                                  onPatched={applyExpensePatch}
+                                  compact
+                                />
                               </div>
                             ))}
                           </div>

@@ -9,8 +9,8 @@ import { Badge } from '@/components/ui/badge'
 import { useHousehold } from '@/hooks/use-household'
 import { useToast } from '@/components/ui/toast'
 import { supabaseBrowser } from '@/lib/supabase'
-import { createAIProvider } from '@/lib/ai/provider'
-import { formatCurrency, formatDate, getCategoryColor } from '@/lib/utils'
+import { ExpenseQuickEdit } from '@/components/expenses/expense-quick-edit'
+import { formatCurrency, formatDate } from '@/lib/utils'
 import { 
   Sparkles,
   Check,
@@ -153,15 +153,17 @@ export default function ClassifyPage() {
     setProcessingId(expense.id)
 
     try {
-      const provider = createAIProvider({ provider: 'mock' })
-      
-      const result = await provider.categorize({
-        description: expense.description || '',
-        merchant: expense.merchant || undefined,
-        amount: expense.amount,
-        categories: categories.map(c => ({ id: c.id, name: c.name, icon: c.icon || '' })),
-        rules: []
+      const response = await fetch('/api/ai/categorize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          merchant: expense.merchant || '',
+          description: expense.description || '',
+          amount: expense.amount,
+          categories: categories.map((c) => ({ id: c.id, name: c.name })),
+        }),
       })
+      const result = await response.json()
 
       if (result.category_id) {
         // Update expense with AI suggestion
@@ -323,27 +325,27 @@ export default function ClassifyPage() {
                       </div>
                     )}
 
-                    <div className="flex flex-wrap gap-2">
-                      {categories
-                        .filter((c) => c.name !== 'Sin clasificar')
-                        .slice(0, 10)
-                        .map((cat) => (
-                          <Button
-                            key={cat.id}
-                            variant={selectedCategoryId === cat.id ? 'default' : 'outline'}
-                            size="sm"
-                            onClick={() => setPendingCategory(expense.id, cat.id)}
-                            className="text-xs"
-                            disabled={processingId === expense.id}
-                          >
-                            <div
-                              className="w-2 h-2 rounded-full mr-1.5"
-                              style={{ backgroundColor: getCategoryColor(cat.name) }}
-                            />
-                            {cat.name}
-                          </Button>
-                        ))}
-                    </div>
+                    <ExpenseQuickEdit
+                      expense={{
+                        ...expense,
+                        category_id: selectedCategoryId || expense.category_id,
+                      }}
+                      categories={categories}
+                      onPatched={(id, patch) => {
+                        if (patch.category_id) {
+                          setUnclassified((prev) => prev.filter((item) => item.id !== id))
+                          setPendingCategoryByExpenseId((prev) => {
+                            const next = { ...prev }
+                            delete next[id]
+                            return next
+                          })
+                          return
+                        }
+                        setUnclassified((prev) =>
+                          prev.map((item) => (item.id === id ? ({ ...item, ...patch } as Expense) : item))
+                        )
+                      }}
+                    />
                   </div>
                 )
               })}

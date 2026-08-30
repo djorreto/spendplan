@@ -56,6 +56,7 @@ import {
   Check
 } from 'lucide-react'
 import { ReceiptScanner } from '@/components/expenses/receipt-scanner'
+import { ExpenseQuickEdit } from '@/components/expenses/expense-quick-edit'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -627,6 +628,20 @@ export default function ExpensesPage() {
     .filter((row) => row.expense.status === 'confirmed')
     .reduce((sum, row) => sum + row.expense.amount, 0)
 
+  const applyExpensePatch = (id: string, patch: Partial<Expense> & { category?: Category | null }) => {
+    setExpenses((prev) =>
+      prev.map((item) =>
+        item.id === id
+          ? ({
+              ...item,
+              ...patch,
+              category: patch.category !== undefined ? patch.category : item.category,
+            } as Expense)
+          : item
+      )
+    )
+  }
+
   const toggleSort = (key: typeof sortKey) => {
     if (sortKey === key) {
       setSortDir((current) => (current === 'asc' ? 'desc' : 'asc'))
@@ -735,7 +750,7 @@ export default function ExpensesPage() {
             </div>
           ) : (
             <div className="overflow-auto max-h-[70vh]">
-              <Table className="min-w-[860px]">
+              <Table className="min-w-[1100px]">
                 <TableHeader className="sticky top-0 z-10 bg-background shadow-sm">
                   <TableRow className="hover:bg-transparent">
                     <TableHead className="h-9 w-[108px] px-2">
@@ -753,11 +768,12 @@ export default function ExpensesPage() {
                         Categoría <ArrowUpDown className="h-3 w-3" />
                       </button>
                     </TableHead>
-                    <TableHead className="h-9 w-[160px] px-2">
+                    <TableHead className="h-9 w-[200px] px-2">
                       <button type="button" className="inline-flex items-center gap-1" onClick={() => toggleSort('sub')}>
                         Subcategoría <ArrowUpDown className="h-3 w-3" />
                       </button>
                     </TableHead>
+                    <TableHead className="h-9 w-[220px] px-2">Comentario</TableHead>
                     <TableHead className="h-9 w-[120px] px-2 text-right">
                       <button type="button" className="inline-flex items-center gap-1 ml-auto" onClick={() => toggleSort('amount')}>
                         Monto <ArrowUpDown className="h-3 w-3" />
@@ -793,16 +809,13 @@ export default function ExpensesPage() {
                         </button>
                       </TableCell>
                       <TableCell className="px-2 py-1.5 text-sm">{group}</TableCell>
-                      <TableCell className="px-2 py-1.5">
-                        <span
-                          className="inline-flex items-center rounded px-1.5 py-0.5 text-xs"
-                          style={{
-                            backgroundColor: category ? getCategoryColor(category.name) + '22' : undefined,
-                            color: category ? getCategoryColor(category.name) : undefined,
-                          }}
-                        >
-                          {subcategory}
-                        </span>
+                      <TableCell className="px-2 py-1.5" colSpan={2}>
+                        <ExpenseQuickEdit
+                          expense={expense}
+                          categories={categories}
+                          budgetedCategoryIds={budgetedCategoryIds}
+                          onPatched={applyExpensePatch}
+                        />
                       </TableCell>
                       <TableCell className="px-2 py-1.5 text-right tabular-nums font-medium whitespace-nowrap">
                         <div>{formatCurrency(expense.amount, currentHousehold?.currency)}</div>
@@ -843,7 +856,7 @@ export default function ExpensesPage() {
                 </TableBody>
                 <TableFooter>
                   <TableRow>
-                    <TableCell colSpan={4} className="px-2 py-2 text-sm">
+                    <TableCell colSpan={5} className="px-2 py-2 text-sm">
                       {filteredExpenses.length} filas
                       {pendingCount > 0 ? ` · ${pendingCount} pendientes` : ''}
                     </TableCell>
