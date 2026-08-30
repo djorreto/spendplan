@@ -35,6 +35,7 @@ import { useAuth } from '@/hooks/use-auth'
 import { useToast } from '@/components/ui/toast'
 import { formatCurrency, formatDate, formatMonth, getInitials, getMonthDateRange } from '@/lib/utils'
 import { supabaseBrowser } from '@/lib/supabase'
+import { settlesFixedPlan } from '@/lib/match-fixed-item'
 import { endOp, formatSupabaseError, logOp, startOp, withRetry } from '@/lib/debug-log'
 import { 
   Receipt,
@@ -89,6 +90,7 @@ interface Expense {
   expense_date: string
   category_id: string | null
   is_unbudgeted?: boolean
+  ai_adjustment?: unknown
   created_by?: string | null
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   created_by_profile?: any
@@ -238,12 +240,14 @@ export default function DashboardPage() {
       const budgetedCategoryIds = new Set(activeVariable.map(v => v.category_id))
       
       const totalVariableSpent = monthExpenses.reduce((sum, e) => {
+        if (settlesFixedPlan(e.ai_adjustment)) return sum
         const isBudgetedCat = !!e.category_id && budgetedCategoryIds.has(e.category_id)
         const countAsVariable = isBudgetedCat && !e.is_unbudgeted
         return countAsVariable ? sum + e.amount : sum
       }, 0)
       
       const totalUnbudgeted = monthExpenses.reduce((sum, e) => {
+        if (settlesFixedPlan(e.ai_adjustment)) return sum
         const isBudgetedCat = !!e.category_id && budgetedCategoryIds.has(e.category_id)
         const countAsUnbudgeted = e.is_unbudgeted || !isBudgetedCat
         return countAsUnbudgeted ? sum + e.amount : sum
@@ -321,7 +325,7 @@ export default function DashboardPage() {
             () =>
               supabase
                 .from('expenses')
-                .select('id, amount, description, merchant, expense_date, category_id, is_unbudgeted, created_by, status, category:categories!expenses_category_id_fkey(name), created_by_profile:profiles!expenses_created_by_fkey(full_name, email, avatar_url)')
+                .select('id, amount, description, merchant, expense_date, category_id, is_unbudgeted, ai_adjustment, created_by, status, category:categories!expenses_category_id_fkey(name), created_by_profile:profiles!expenses_created_by_fkey(full_name, email, avatar_url)')
                 .eq('household_id', currentHousehold.id)
               .gte('expense_date', chartRangeStart)
               .lt('expense_date', chartRangeEndExclusive)
@@ -371,12 +375,14 @@ export default function DashboardPage() {
         const budgetedCategoryIds = new Set(activeVariable.map((v) => v.category_id).filter(Boolean))
 
         const totalVariableSpent = monthExpenses.reduce((sum, e) => {
+          if (settlesFixedPlan(e.ai_adjustment)) return sum
           const isBudgetedCat = !!e.category_id && budgetedCategoryIds.has(e.category_id)
           const countAsVariable = isBudgetedCat && !e.is_unbudgeted
           return countAsVariable ? sum + (e.amount || 0) : sum
         }, 0)
 
         const totalUnbudgeted = monthExpenses.reduce((sum, e) => {
+          if (settlesFixedPlan(e.ai_adjustment)) return sum
           const isBudgetedCat = !!e.category_id && budgetedCategoryIds.has(e.category_id)
           const countAsUnbudgeted = e.is_unbudgeted || !isBudgetedCat
           return countAsUnbudgeted ? sum + (e.amount || 0) : sum

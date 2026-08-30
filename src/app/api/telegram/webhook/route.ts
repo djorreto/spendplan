@@ -11,7 +11,7 @@ import { createClient } from '@supabase/supabase-js'
 import { createOpenAI } from '@ai-sdk/openai'
 import { generateText } from 'ai'
 import { GROQ_MODEL } from '@/lib/ai/groq-model'
-import { buildFixedAdjustment, matchFixedBudgetItem, type FixedPlanItem } from '@/lib/match-fixed-item'
+import { buildFixedAdjustment, matchFixedBudgetItem, settlesFixedPlan, type FixedPlanItem } from '@/lib/match-fixed-item'
 import { 
   sendTelegramMessage, 
   answerTelegramCallbackQuery,
@@ -402,7 +402,7 @@ async function buildMonthlyContext(householdId: string, month: string): Promise<
       .eq('household_id', householdId),
     supabase
       .from('expenses')
-      .select('amount, description, merchant, expense_date, category_id, is_unbudgeted, status')
+      .select('amount, description, merchant, expense_date, category_id, is_unbudgeted, status, ai_adjustment')
       .eq('household_id', householdId)
       .gte('expense_date', start)
       .lt('expense_date', endExclusive)
@@ -444,11 +444,11 @@ async function buildMonthlyContext(householdId: string, month: string): Promise<
   const budgetedCategoryIds = new Set(activeVariable.map((v: any) => v.category_id).filter(Boolean))
 
   const totalVariableSpent = monthExpenses
-    .filter((e: any) => e.category_id && budgetedCategoryIds.has(e.category_id))
+    .filter((e: any) => !settlesFixedPlan(e.ai_adjustment) && e.category_id && budgetedCategoryIds.has(e.category_id))
     .reduce((sum: number, e: any) => sum + (Number(e.amount) || 0), 0)
 
   const totalUnbudgeted = monthExpenses
-    .filter((e: any) => e.is_unbudgeted || !e.category_id || !budgetedCategoryIds.has(e.category_id))
+    .filter((e: any) => !settlesFixedPlan(e.ai_adjustment) && (e.is_unbudgeted || !e.category_id || !budgetedCategoryIds.has(e.category_id)))
     .reduce((sum: number, e: any) => sum + (Number(e.amount) || 0), 0)
 
   const availableReal = totalIncome - totalFixed - totalVariableSpent - totalUnbudgeted

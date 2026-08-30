@@ -120,3 +120,14 @@ export function isProposedAdjustment(value: unknown): value is FixedAdjustment {
   const row = value as FixedAdjustment
   return row.status === 'proposed' && Boolean(row.budget_item_id) && Boolean(row.item_name)
 }
+
+export function isAcceptedFixedSettlement(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false
+  return (value as FixedAdjustment).status === 'accepted'
+}
+
+export function settlesFixedPlan(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false
+  const status = (value as FixedAdjustment).status
+  return status === 'proposed' || status === 'accepted'
+}

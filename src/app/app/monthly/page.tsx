@@ -35,6 +35,7 @@ import { useToast } from '@/components/ui/toast'
 import type { BudgetItem, Expense, Category } from '@/types'
 import { categoryGroupName, resolveCategoryParts } from '@/lib/category-taxonomy'
 import { ExpenseQuickEdit } from '@/components/expenses/expense-quick-edit'
+import { isAcceptedFixedSettlement, settlesFixedPlan } from '@/lib/match-fixed-item'
 import { FixedAdjustmentReview, hasProposedAdjustment } from '@/components/expenses/fixed-adjustment-review'
 import { Edit2, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react'
 
@@ -361,10 +362,11 @@ export default function MonthlyPage() {
         .reduce((sum, i) => sum + (isItemActiveInMonth(i, ym) ? getMonthlyAmount(i) : 0), 0)
       const monthExpenses = expensesByMonth.get(ym) || []
       const varSpent = monthExpenses
-        .filter((e) => e.category_id && activeVarByMonthCategory.has(`${ym}-${e.category_id}`))
+        .filter((e) => !settlesFixedPlan(e.ai_adjustment) && e.category_id && activeVarByMonthCategory.has(`${ym}-${e.category_id}`))
         .reduce((sum, e) => sum + (Number(e.amount) || 0), 0)
       const unbudgeted = monthExpenses
         .filter((e) => {
+          if (settlesFixedPlan(e.ai_adjustment)) return false
           const cat = e.category_id
           if (!cat) return true
           const hasActiveVar = activeVarByMonthCategory.has(`${ym}-${cat}`)
@@ -778,6 +780,7 @@ export default function MonthlyPage() {
                       .filter((e) => {
                         const ymExpense = parseDateUTC(e.expense_date).toISOString().slice(0, 7)
                         if (ymExpense !== ym) return false
+                        if (isAcceptedFixedSettlement(e.ai_adjustment)) return false
                         if (e.category_id !== item.category_id) return false
                         // Si hay variable activa para esta categoría/mes, se muestra aquí.
                         const hasActiveVar = activeVarByMonthCategory.has(`${ym}-${e.category_id}`)
@@ -882,6 +885,7 @@ export default function MonthlyPage() {
                       .filter((e) => {
                         const ymExpense = parseDateUTC(e.expense_date).toISOString().slice(0, 7)
                         if (ymExpense !== ym) return false
+                        if (isAcceptedFixedSettlement(e.ai_adjustment)) return false
                         const cat = e.category_id
                         if (!cat) return true
                         const hasActiveVar = activeVarByMonthCategory.has(`${ym}-${cat}`)
