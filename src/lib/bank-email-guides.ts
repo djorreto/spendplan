@@ -19,21 +19,18 @@ export const BANK_EMAIL_GUIDES: BankEmailGuide[] = [
     search: 'from:(@itau.cl OR @correo.itau.cl)',
     label: 'Itaú',
     senders: [
-      'Cualquier dirección que termine en @itau.cl',
-      'Cualquier dirección que termine en @correo.itau.cl',
-      'Ejemplos: notificaciones@itau.cl, avisos@itau.cl, no-reply@itau.cl',
+      'Cualquier correo que termine en @itau.cl',
+      'Cualquier correo que termine en @correo.itau.cl',
     ],
     activateAlerts: [
-      'Entra a la App Itaú Chile o a itau.cl con tu RUT.',
-      'En tu perfil, confirma que el correo registrado es tu Gmail. Si Itaú tiene otro mail, los avisos nunca llegan a SpendPlan.',
-      'Activa avisos por email de compras, transferencias y movimientos de tarjeta. Suele estar en tarjetas, seguridad o notificaciones.',
-      'Si solo tienes campanita en el celular (push) y no correo, SpendPlan no ve el gasto.',
-      'Haz una compra chica o espera un aviso real. Tiene que aparecer en Gmail (bandeja, Promociones o Spam) antes de seguir.',
+      'Abre la app Itaú Chile o entra a itau.cl con tu RUT.',
+      'En tu perfil, el correo del banco debe ser el mismo Gmail que usas aquí. Si Itaú tiene otro mail, los avisos nunca llegan.',
+      'Activa avisos por correo de compras, transferencias y tarjeta. Suele estar en perfil, seguridad o notificaciones.',
+      'Si solo te llega la campanita del celular y no un mail, SpendPlan no ve el gasto.',
     ],
     notes: [
       'No reenvíes todo Gmail. Solo el filtro de Itaú.',
-      'Diego y Mari usan la misma casilla del hogar.',
-      'El mail de confirmación de Gmail no llega a tu bandeja: está en Resend → Receiving.',
+      'Si en el hogar hay dos Gmail, cada persona hace el filtro en el suyo, con la misma casilla.',
     ],
   },
 ]

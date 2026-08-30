@@ -66,6 +66,13 @@ export interface HouseholdSettings {
   savings_goal?: number
   // Token de la casilla virtual del hogar (gastos+token@mail.spendplan.cl)
   inbound_email_token?: string
+  gmail_forwarding?: {
+    status: 'confirmed' | 'needs_click'
+    confirmed_at?: string
+    confirmation_url?: string | null
+    confirmation_code?: string | null
+    gmail_address?: string | null
+  }
 }
 
 // ========================================

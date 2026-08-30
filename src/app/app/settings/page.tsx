@@ -536,9 +536,10 @@ export default function SettingsPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <p className="text-sm text-muted-foreground">
-                No uses djorreto@spendplan.cl (Titan/GoDaddy). Esa casilla es de contacto.
-                Esta es virtual: <code className="text-xs bg-muted px-1 rounded">gastos+codigo@mail.spendplan.cl</code>.
-                El reenvío del banco llega aquí y crea un gasto pendiente. Confírmalo en Gastos para que sume al mes.
+                Esta es la casilla del hogar:{' '}
+                <code className="text-xs bg-muted px-1 rounded">gastos+codigo@mail.spendplan.cl</code>.
+                Cada persona reenvía solo los avisos del banco desde su Gmail. El gasto queda
+                pendiente en Gastos hasta que lo confirmes.
               </p>
 
               {inboundAddress ? (
@@ -553,8 +554,8 @@ export default function SettingsPage() {
                     </Button>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    En Gmail, reenvía solo los avisos del banco a esta dirección. Diego y Mari
-                    usan la misma. El gasto aparece como Pendiente hasta que lo confirmes.
+                    En Gmail reenvía solo los avisos del banco a esta dirección. Todos en el
+                    hogar usan la misma casilla.
                   </p>
                 </div>
               ) : (
@@ -575,7 +576,7 @@ export default function SettingsPage() {
                   Abrir Correos
                 </Link>
                 {' '}
-                para configurar Gmail e Itaú, y después otros bancos.
+                para los pasos de Gmail e Itaú.
               </p>
             </CardContent>
           </Card>

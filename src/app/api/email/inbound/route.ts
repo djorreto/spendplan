@@ -6,6 +6,12 @@ import {
   isUnbudgetedKind,
   shouldApplyCategory,
 } from '@/lib/ai/analyze-bank-email'
+import {
+  isGmailForwardingConfirmation,
+  parseGmailForwardingConfirmation,
+  tryConfirmGmailForwarding,
+  type GmailForwardingState,
+} from '@/lib/gmail-forwarding'
 import { extractEmailAddress, extractInboundToken } from '@/lib/inbound-email'
 import { htmlToText } from '@/lib/parse-bank-email'
 import { verifyResendWebhook } from '@/lib/resend-webhook'
@@ -166,12 +172,62 @@ export async function POST(req: NextRequest) {
 
     const subject = received?.subject || event.data?.subject || null
     const textBody = (received?.text || htmlToText(received?.html) || '').trim()
+    const fromAddress = extractEmailAddress(received?.from || event.data?.from || '')
+
+    if (
+      isGmailForwardingConfirmation({
+        subject,
+        from: fromAddress || received?.from || event.data?.from,
+        text: textBody,
+      })
+    ) {
+      const parsed = parseGmailForwardingConfirmation(textBody, received?.html)
+      let confirmed = false
+      if (parsed.confirmation_url) {
+        confirmed = await tryConfirmGmailForwarding(parsed.confirmation_url)
+      }
+      const forwarding: GmailForwardingState = {
+        status: confirmed ? 'confirmed' : 'needs_click',
+        confirmed_at: confirmed ? new Date().toISOString() : undefined,
+        confirmation_url: parsed.confirmation_url,
+        confirmation_code: parsed.confirmation_code,
+        gmail_address: parsed.gmail_address,
+      }
+      const currentSettings = (household.settings || {}) as Record<string, unknown>
+      await supabase
+        .from('households')
+        .update({
+          settings: {
+            ...currentSettings,
+            gmail_forwarding: forwarding,
+          },
+        })
+        .eq('id', household.id)
+
+      await supabase.from('inbound_emails').insert({
+        household_id: household.id,
+        resend_email_id: emailId,
+        from_address: fromAddress || null,
+        to_addresses: toAddresses,
+        subject,
+        text_body: textBody.slice(0, 20_000),
+        parsed: { kind: 'gmail_forwarding', ...parsed, confirmed },
+        expense_id: null,
+        status: confirmed ? 'gmail_confirmed' : 'gmail_needs_click',
+        error: null,
+      })
+
+      return NextResponse.json({
+        ok: true,
+        status: confirmed ? 'gmail_confirmed' : 'gmail_needs_click',
+      })
+    }
+
     const analyzed = await analyzeBankEmail(supabase, household.id, {
       subject,
       text: textBody,
       html: received?.html,
     })
-    const fromAddress = extractEmailAddress(received?.from || event.data?.from || '')
     const createdBy = await resolveCreatedBy(household.id, fromAddress || null)
 
     let expenseId: string | null = null
