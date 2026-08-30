@@ -7,7 +7,15 @@ import Link from 'next/link'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Progress } from '@/components/ui/progress'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   Table,
   TableBody,
@@ -31,9 +39,75 @@ import {
 } from '@/lib/savings-opportunities'
 import { cn, formatCurrency, formatDate, formatMonth, getMonthDateRange } from '@/lib/utils'
 import type { SavingsOpportunity } from '@/types'
-import { Lightbulb, ShoppingCart, Tag, TrendingDown, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, Lightbulb, ShoppingCart, Tag, TrendingDown, X } from 'lucide-react'
 
 type DrillFocus = { type: 'group' | 'merchant'; key: string; label: string }
+type DetailSortKey = 'date' | 'merchant' | 'category' | 'amount'
+type DetailFilters = { date: string; merchant: string; category: string; amount: string }
+
+const EMPTY_FILTERS: DetailFilters = { date: 'all', merchant: 'all', category: 'all', amount: '' }
+
+function foldText(value: string) {
+  return value
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+}
+
+function categoryLabel(row: OpportunityExpense) {
+  return row.category?.name || row.category_name || 'Sin categoría'
+}
+
+function matchesAmount(amount: number, query: string) {
+  const raw = query.trim()
+  if (!raw) return true
+  const parsed = raw.match(/^(>=|<=|>|<)?\s*\$?\s*(.+)$/)
+  const op = parsed?.[1] || ''
+  const numberPart = (parsed?.[2] || raw).replace(/\./g, '').replace(',', '.')
+  const target = Number(numberPart)
+  if (!Number.isFinite(target)) return foldText(String(amount)).includes(foldText(raw))
+  if (op === '>') return amount > target
+  if (op === '>=') return amount >= target
+  if (op === '<') return amount < target
+  if (op === '<=') return amount <= target
+  const digits = String(Math.round(amount)).replace(/\D/g, '')
+  const queryDigits = raw.replace(/\D/g, '')
+  return amount === target || (queryDigits.length > 0 && digits.includes(queryDigits))
+}
+
+function uniqueSorted(values: string[]) {
+  return [...new Set(values.filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'))
+}
+
+function SortHeader({
+  label,
+  active,
+  dir,
+  align = 'left',
+  onClick,
+}: {
+  label: string
+  active: boolean
+  dir: 'asc' | 'desc'
+  align?: 'left' | 'right'
+  onClick: () => void
+}) {
+  const Icon = active ? (dir === 'asc' ? ArrowUp : ArrowDown) : ArrowUpDown
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'inline-flex items-center gap-1 font-medium',
+        align === 'right' && 'ml-auto',
+        active && 'text-foreground'
+      )}
+    >
+      {label}
+      <Icon className={cn('h-3 w-3', active ? 'text-emerald-700' : 'text-muted-foreground')} />
+    </button>
+  )
+}
 
 function shiftMonth(month: string, delta: number): string {
   const [year, monthNum] = month.split('-').map(Number)
@@ -52,6 +126,9 @@ export default function OportunidadesPage() {
   const [loading, setLoading] = useState(true)
   const [view, setView] = useState<CriticalView | null>(null)
   const [focus, setFocus] = useState<DrillFocus | null>(null)
+  const [sortKey, setSortKey] = useState<DetailSortKey>('date')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+  const [filters, setFilters] = useState<DetailFilters>(EMPTY_FILTERS)
   const detailRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -95,20 +172,62 @@ export default function OportunidadesPage() {
 
   useEffect(() => {
     setFocus(null)
+    setFilters(EMPTY_FILTERS)
+    setSortKey('date')
+    setSortDir('desc')
   }, [currentHousehold?.id, selectedMonth])
 
   const currency = currentHousehold?.currency || 'CLP'
   const topLeak = view?.opportunities[0]
   const customGroups = currentHousehold?.settings?.category_groups
 
-  const detailRows = useMemo(() => {
+  const sourceRows = useMemo(() => {
     if (!view || !focus) return []
-    const rows =
-      focus.type === 'group'
-        ? view.monthRows.filter((row) => expenseGroupName(row, customGroups) === focus.key)
-        : view.monthRows.filter((row) => expenseMerchantKey(row) === focus.key)
-    return [...rows].sort((a, b) => String(b.expense_date).localeCompare(String(a.expense_date)))
+    return focus.type === 'group'
+      ? view.monthRows.filter((row) => expenseGroupName(row, customGroups) === focus.key)
+      : view.monthRows.filter((row) => expenseMerchantKey(row) === focus.key)
   }, [view, focus, customGroups])
+
+  const dateOptions = useMemo(
+    () =>
+      uniqueSorted(sourceRows.map((row) => row.expense_date)).map((value) => ({
+        value,
+        label: formatDate(`${value}T12:00:00`),
+      })),
+    [sourceRows]
+  )
+  const merchantOptions = useMemo(
+    () => uniqueSorted(sourceRows.map((row) => expenseDisplayName(row))),
+    [sourceRows]
+  )
+  const categoryOptions = useMemo(
+    () => uniqueSorted(sourceRows.map((row) => categoryLabel(row))),
+    [sourceRows]
+  )
+
+  const filtersActive =
+    filters.date !== 'all' ||
+    filters.merchant !== 'all' ||
+    filters.category !== 'all' ||
+    filters.amount.trim() !== ''
+
+  const detailRows = useMemo(() => {
+    const next = sourceRows.filter((row) => {
+      if (filters.date !== 'all' && row.expense_date !== filters.date) return false
+      if (filters.merchant !== 'all' && expenseDisplayName(row) !== filters.merchant) return false
+      if (filters.category !== 'all' && categoryLabel(row) !== filters.category) return false
+      if (!matchesAmount(Number(row.amount) || 0, filters.amount)) return false
+      return true
+    })
+    const dir = sortDir === 'asc' ? 1 : -1
+    next.sort((a, b) => {
+      if (sortKey === 'amount') return ((Number(a.amount) || 0) - (Number(b.amount) || 0)) * dir
+      if (sortKey === 'date') return String(a.expense_date).localeCompare(String(b.expense_date)) * dir
+      if (sortKey === 'merchant') return expenseDisplayName(a).localeCompare(expenseDisplayName(b), 'es') * dir
+      return categoryLabel(a).localeCompare(categoryLabel(b), 'es') * dir
+    })
+    return next
+  }, [sourceRows, filters, sortKey, sortDir])
 
   const detailTotal = detailRows.reduce((sum, row) => sum + (Number(row.amount) || 0), 0)
 
@@ -116,6 +235,18 @@ export default function OportunidadesPage() {
     setFocus((current) =>
       current && current.type === next.type && current.key === next.key ? null : next
     )
+    setFilters(EMPTY_FILTERS)
+    setSortKey('date')
+    setSortDir('desc')
+  }
+
+  function toggleSort(key: DetailSortKey) {
+    if (sortKey === key) {
+      setSortDir((current) => (current === 'asc' ? 'desc' : 'asc'))
+      return
+    }
+    setSortKey(key)
+    setSortDir(key === 'merchant' || key === 'category' ? 'asc' : 'desc')
   }
 
   useEffect(() => {
@@ -267,30 +398,142 @@ export default function OportunidadesPage() {
                   <div>
                     <CardTitle>Dentro de {focus.label}</CardTitle>
                     <CardDescription>
-                      {detailRows.length} gasto{detailRows.length === 1 ? '' : 's'} de{' '}
-                      {formatMonth(selectedMonth)}. Clic otra vez en la barra para cerrar.
+                      {filtersActive
+                        ? `${detailRows.length} de ${sourceRows.length} gasto${sourceRows.length === 1 ? '' : 's'}`
+                        : `${sourceRows.length} gasto${sourceRows.length === 1 ? '' : 's'}`}{' '}
+                      de {formatMonth(selectedMonth)}. Ordena o filtra cada columna.
                     </CardDescription>
                   </div>
-                  <Button type="button" variant="ghost" size="sm" onClick={() => setFocus(null)}>
-                    <X className="h-4 w-4 mr-1" />
-                    Cerrar
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    {filtersActive ? (
+                      <Button type="button" variant="outline" size="sm" onClick={() => setFilters(EMPTY_FILTERS)}>
+                        Limpiar filtros
+                      </Button>
+                    ) : null}
+                    <Button type="button" variant="ghost" size="sm" onClick={() => setFocus(null)}>
+                      <X className="h-4 w-4 mr-1" />
+                      Cerrar
+                    </Button>
+                  </div>
                 </CardHeader>
                 <CardContent>
-                  {detailRows.length === 0 ? (
+                  {sourceRows.length === 0 ? (
                     <p className="text-sm text-muted-foreground">No hay cargos en este recorte.</p>
                   ) : (
+                    <div className="overflow-x-auto">
                     <Table>
                       <TableHeader>
-                        <TableRow>
-                          <TableHead>Fecha</TableHead>
-                          <TableHead>Comercio</TableHead>
-                          <TableHead>Categoría</TableHead>
-                          <TableHead className="text-right">Monto</TableHead>
+                        <TableRow className="hover:bg-transparent">
+                          <TableHead className="h-9">
+                            <SortHeader
+                              label="Fecha"
+                              active={sortKey === 'date'}
+                              dir={sortDir}
+                              onClick={() => toggleSort('date')}
+                            />
+                          </TableHead>
+                          <TableHead className="h-9">
+                            <SortHeader
+                              label="Comercio"
+                              active={sortKey === 'merchant'}
+                              dir={sortDir}
+                              onClick={() => toggleSort('merchant')}
+                            />
+                          </TableHead>
+                          <TableHead className="h-9">
+                            <SortHeader
+                              label="Categoría"
+                              active={sortKey === 'category'}
+                              dir={sortDir}
+                              onClick={() => toggleSort('category')}
+                            />
+                          </TableHead>
+                          <TableHead className="h-9 text-right">
+                            <SortHeader
+                              label="Monto"
+                              active={sortKey === 'amount'}
+                              dir={sortDir}
+                              align="right"
+                              onClick={() => toggleSort('amount')}
+                            />
+                          </TableHead>
+                        </TableRow>
+                        <TableRow className="hover:bg-transparent">
+                          <TableHead className="pb-3 pt-0 font-normal">
+                            <Select
+                              value={filters.date}
+                              onValueChange={(value) => setFilters((current) => ({ ...current, date: value }))}
+                            >
+                              <SelectTrigger className="h-8 text-xs">
+                                <SelectValue placeholder="Todas" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="all">Todas las fechas</SelectItem>
+                                {dateOptions.map((option) => (
+                                  <SelectItem key={option.value} value={option.value}>
+                                    {option.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </TableHead>
+                          <TableHead className="pb-3 pt-0 font-normal">
+                            <Select
+                              value={filters.merchant}
+                              onValueChange={(value) => setFilters((current) => ({ ...current, merchant: value }))}
+                            >
+                              <SelectTrigger className="h-8 text-xs">
+                                <SelectValue placeholder="Todos" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="all">Todos los comercios</SelectItem>
+                                {merchantOptions.map((option) => (
+                                  <SelectItem key={option} value={option}>
+                                    {option}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </TableHead>
+                          <TableHead className="pb-3 pt-0 font-normal">
+                            <Select
+                              value={filters.category}
+                              onValueChange={(value) => setFilters((current) => ({ ...current, category: value }))}
+                            >
+                              <SelectTrigger className="h-8 text-xs">
+                                <SelectValue placeholder="Todas" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="all">Todas las categorías</SelectItem>
+                                {categoryOptions.map((option) => (
+                                  <SelectItem key={option} value={option}>
+                                    {option}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </TableHead>
+                          <TableHead className="pb-3 pt-0 font-normal">
+                            <Input
+                              value={filters.amount}
+                              onChange={(event) =>
+                                setFilters((current) => ({ ...current, amount: event.target.value }))
+                              }
+                              placeholder="Ej: >20000"
+                              className="h-8 text-xs text-right"
+                            />
+                          </TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {detailRows.map((row, index) => (
+                        {detailRows.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={4} className="py-8 text-center text-sm text-muted-foreground">
+                              Ningún gasto con estos filtros.
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          detailRows.map((row, index) => (
                           <TableRow key={row.id || `${row.expense_date}-${index}`}>
                             <TableCell className="whitespace-nowrap">
                               {formatDate(`${row.expense_date}T12:00:00`)}
@@ -302,23 +545,25 @@ export default function OportunidadesPage() {
                               ) : null}
                             </TableCell>
                             <TableCell className="text-muted-foreground">
-                              {row.category?.name || row.category_name || 'Sin categoría'}
+                              {categoryLabel(row)}
                             </TableCell>
                             <TableCell className="text-right tabular-nums">
                               {formatCurrency(Number(row.amount) || 0, currency)}
                             </TableCell>
                           </TableRow>
-                        ))}
+                          ))
+                        )}
                       </TableBody>
                       <TableFooter>
                         <TableRow>
-                          <TableCell colSpan={3}>Total</TableCell>
+                          <TableCell colSpan={3}>{filtersActive ? 'Total filtrado' : 'Total'}</TableCell>
                           <TableCell className="text-right tabular-nums">
                             {formatCurrency(detailTotal, currency)}
                           </TableCell>
                         </TableRow>
                       </TableFooter>
                     </Table>
+                    </div>
                   )}
                 </CardContent>
               </Card>
