@@ -22,6 +22,7 @@ import { useHousehold } from '@/hooks/use-household'
 import { useToast } from '@/components/ui/toast'
 import { supabaseBrowser } from '@/lib/supabase'
 import { getInitials } from '@/lib/utils'
+import { generateInboundToken, householdInboundAddress } from '@/lib/inbound-email'
 import { DebugLogPanel } from '@/components/ui/debug-log-panel'
 import { 
   User,
@@ -33,7 +34,8 @@ import {
   Copy,
   Check,
   Send,
-  RefreshCw
+  RefreshCw,
+  Mail
 } from 'lucide-react'
 
 export default function SettingsPage() {
@@ -65,6 +67,8 @@ export default function SettingsPage() {
   const [telegramCode, setTelegramCode] = useState<string | null>(null)
   const [generatingCode, setGeneratingCode] = useState(false)
   const [codeCopied, setCodeCopied] = useState(false)
+  const [inboxCopied, setInboxCopied] = useState(false)
+  const [creatingInbox, setCreatingInbox] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [leaving, setLeaving] = useState(false)
   const [confirmText, setConfirmText] = useState('')
@@ -113,6 +117,35 @@ export default function SettingsPage() {
     } else {
       addToast({ type: 'success', message: 'Hogar actualizado' })
     }
+  }
+
+  const inboundToken = currentHousehold?.settings?.inbound_email_token || null
+  const inboundAddress = householdInboundAddress(inboundToken)
+
+  const handleCreateInbox = async () => {
+    if (!currentHousehold || !isOwner) return
+    setCreatingInbox(true)
+    const token = generateInboundToken()
+    const { error } = await updateHousehold(currentHousehold.id, {
+      settings: {
+        ...(currentHousehold.settings || {}),
+        inbound_email_token: token,
+      },
+    })
+    setCreatingInbox(false)
+    if (error) {
+      addToast({ type: 'error', message: error })
+    } else {
+      addToast({ type: 'success', message: 'Casilla del hogar creada' })
+    }
+  }
+
+  const copyInboundAddress = async () => {
+    if (!inboundAddress) return
+    await navigator.clipboard.writeText(inboundAddress)
+    setInboxCopied(true)
+    addToast({ type: 'success', message: 'Casilla copiada' })
+    setTimeout(() => setInboxCopied(false), 2000)
   }
 
   const handleInvite = async () => {
@@ -490,6 +523,53 @@ export default function SettingsPage() {
 
         {/* Integrations Tab */}
         <TabsContent value="integrations" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Mail className="h-5 w-5" />
+                Casilla de gastos del hogar
+              </CardTitle>
+              <CardDescription>
+                Una dirección para este hogar. Cada miembro reenvía solo los correos del banco.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                No uses djorreto@spendplan.cl (Titan/GoDaddy). Esa casilla es de contacto.
+                Esta es virtual: <code className="text-xs bg-muted px-1 rounded">gastos+codigo@mail.spendplan.cl</code>.
+                El reenvío del banco llega aquí y crea un gasto pendiente. Confírmalo en Gastos para que sume al mes.
+              </p>
+
+              {inboundAddress ? (
+                <div className="space-y-2">
+                  <Label>Dirección de este hogar</Label>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 bg-muted px-4 py-2 rounded text-sm font-mono break-all">
+                      {inboundAddress}
+                    </code>
+                    <Button variant="outline" size="icon" onClick={copyInboundAddress}>
+                      {inboxCopied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    En Gmail: filtro por el banco → reenviar a esta dirección. Diego y Mari usan la misma. El gasto aparece como Pendiente hasta que lo confirmes.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-sm text-muted-foreground">
+                    Este hogar todavía no tiene casilla.
+                  </p>
+                  {isOwner && (
+                    <Button onClick={handleCreateInbox} disabled={creatingInbox}>
+                      {creatingInbox ? 'Creando...' : 'Crear casilla del hogar'}
+                    </Button>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           {/* Telegram */}
           <Card id="telegram">
             <CardHeader>

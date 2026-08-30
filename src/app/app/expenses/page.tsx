@@ -41,7 +41,8 @@ import {
   Trash2,
   Receipt,
   Tag,
-  Camera
+  Camera,
+  Check
 } from 'lucide-react'
 import { ReceiptScanner } from '@/components/expenses/receipt-scanner'
 import {
@@ -519,8 +520,34 @@ export default function ExpensesPage() {
     }
   }
 
+  const handleConfirm = async (id: string) => {
+    if (checkIsDemoMode()) {
+      addToast({ type: 'success', message: 'Gasto confirmado' })
+      return
+    }
+
+    const supabase = supabaseBrowser()
+    const op = startOp('expenses.confirm', { id })
+    try {
+      const resp = await withRetry(
+        () => supabase.from('expenses').update({ status: 'confirmed' }).eq('id', id),
+        { retries: 2, baseDelayMs: 250, ctx: op, step: 'update.expense' }
+      )
+      if (resp.error) throw resp.error
+      addToast({ type: 'success', message: 'Gasto confirmado' })
+      endOp(op, true)
+      loadData()
+    } catch (error) {
+      logOp(op, 'error', 'confirm failed', 'confirm', { error: formatSupabaseError(error) })
+      endOp(op, false)
+      addToast({ type: 'error', message: `Error al confirmar gasto (opId: ${op.opId})` })
+    }
+  }
+
   // Filter expenses
   const filteredExpenses = expenses.filter(expense => {
+    if (expense.status === 'cancelled') return false
+
     const matchesSearch = !searchQuery || 
       expense.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       expense.merchant?.toLowerCase().includes(searchQuery.toLowerCase())
@@ -530,8 +557,12 @@ export default function ExpensesPage() {
     return matchesSearch && matchesCategory
   })
 
+  const pendingCount = filteredExpenses.filter((e) => e.status === 'pending').length
+
   // Calculate total
-  const totalFiltered = filteredExpenses.reduce((sum, e) => sum + e.amount, 0)
+  const totalFiltered = filteredExpenses
+    .filter((e) => e.status === 'confirmed')
+    .reduce((sum, e) => sum + e.amount, 0)
 
   return (
     <div className="space-y-6">
@@ -554,6 +585,16 @@ export default function ExpensesPage() {
           </Button>
         </div>
       </div>
+
+      {pendingCount > 0 && (
+        <Card className="border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30">
+          <CardContent className="p-4 text-sm">
+            {pendingCount === 1
+              ? 'Hay 1 gasto pendiente (correo o Telegram). Confírmalo para que sume al mes.'
+              : `Hay ${pendingCount} gastos pendientes (correo o Telegram). Confírmalos para que sumen al mes.`}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Instrucciones rápidas */}
       <Card className="bg-muted/20 border-dashed">
@@ -661,6 +702,12 @@ export default function ExpensesPage() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
+                        {expense.status === 'pending' && (
+                          <DropdownMenuItem onClick={() => handleConfirm(expense.id)}>
+                            <Check className="mr-2 h-4 w-4" />
+                            Confirmar
+                          </DropdownMenuItem>
+                        )}
                         <DropdownMenuItem onClick={() => openEditExpense(expense)}>
                           <Pencil className="mr-2 h-4 w-4" />
                           Editar

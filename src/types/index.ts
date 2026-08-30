@@ -64,6 +64,8 @@ export interface HouseholdSettings {
   csv_amount_column?: string
   // Meta de ahorro mensual (se guarda como número decimal)
   savings_goal?: number
+  // Token de la casilla virtual del hogar (gastos+token@mail.spendplan.cl)
+  inbound_email_token?: string
 }
 
 // ========================================
