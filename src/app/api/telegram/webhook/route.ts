@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createOpenAI } from '@ai-sdk/openai'
 import { generateText } from 'ai'
+import { GROQ_MODEL } from '@/lib/ai/groq-model'
 import { 
   sendTelegramMessage, 
   answerTelegramCallbackQuery,
@@ -687,7 +688,7 @@ Devuelve este formato exacto:
 `
 
   const { text: out } = await generateText({
-    model: groq('llama-3.3-70b-versatile'),
+    model: groq(GROQ_MODEL),
     system: 'Responde únicamente en JSON válido, sin markdown.',
     prompt,
     temperature: 0.1,
@@ -825,7 +826,7 @@ Reglas:
 `
 
   const { text } = await generateText({
-    model: groq('llama-3.3-70b-versatile'),
+    model: groq(GROQ_MODEL),
     system: 'Responde únicamente en JSON válido, sin markdown ni explicación extra.',
     prompt,
     temperature: 0.2,

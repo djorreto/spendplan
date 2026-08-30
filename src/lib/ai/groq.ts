@@ -8,6 +8,7 @@
 
 import { createOpenAI } from '@ai-sdk/openai'
 import { generateText, streamText } from 'ai'
+import { GROQ_MODEL } from '@/lib/ai/groq-model'
 
 // Función para obtener la API key
 function getGroqApiKey(): string {
@@ -28,8 +29,7 @@ const groq = createOpenAI({
   baseURL: 'https://api.groq.com/openai/v1',
 })
 
-// Modelo recomendado: llama-3.3-70b-versatile
-const model = groq('llama-3.3-70b-versatile')
+const model = groq(GROQ_MODEL)
 
 /**
  * System prompt para el copiloto financiero de SpendPlan
@@ -100,7 +100,7 @@ export async function generateCopilotResponse(
 
   try {
     const { text } = await generateText({
-      model: groqClient('llama-3.3-70b-versatile'),
+      model: groqClient(GROQ_MODEL),
       system: COPILOT_SYSTEM_PROMPT,
       prompt: `CONTEXTO FINANCIERO ACTUAL:
 ${financialContext}
@@ -141,7 +141,7 @@ export async function streamCopilotResponse(
 
   try {
     const result = await streamText({
-      model: groqClient('llama-3.3-70b-versatile'),
+      model: groqClient(GROQ_MODEL),
       system: COPILOT_SYSTEM_PROMPT,
       prompt: `CONTEXTO FINANCIERO ACTUAL:
 ${financialContext}
@@ -219,7 +219,7 @@ Responde SOLO en JSON válido con este formato:
 
   try {
     const { text } = await generateText({
-      model: groqClient('llama-3.3-70b-versatile'),
+      model: groqClient(GROQ_MODEL),
       system: 'Responde únicamente en JSON válido, sin markdown ni explicaciones.',
       prompt,
       temperature: 0.2,
@@ -331,7 +331,7 @@ Sé específico, usa los números del contexto, y da consejos prácticos para Ch
 
   try {
     const { text } = await generateText({
-      model: groqClient('llama-3.3-70b-versatile'),
+      model: groqClient(GROQ_MODEL),
       system: 'Responde únicamente en JSON válido, sin markdown.',
       prompt,
       temperature: 0.4,

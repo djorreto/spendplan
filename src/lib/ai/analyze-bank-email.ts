@@ -2,6 +2,7 @@ import { createOpenAI } from '@ai-sdk/openai'
 import { generateText } from 'ai'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { PaymentMethod } from '@/types'
+import { GROQ_MODEL } from '@/lib/ai/groq-model'
 import {
   defaultExpenseDate,
   parseBankEmail,
@@ -227,11 +228,11 @@ Formato exacto:
 
   const { text } = await withTimeout(
     generateText({
-      model: groq('llama-3.3-70b-versatile'),
+      model: groq(GROQ_MODEL),
       system: 'Responde únicamente en JSON válido, sin markdown.',
       prompt,
       temperature: 0.1,
-      maxTokens: 280,
+      maxTokens: 400,
     }),
     GROQ_TIMEOUT_MS
   )

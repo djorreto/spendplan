@@ -6,6 +6,7 @@
 import { createOpenAI } from '@ai-sdk/openai'
 import { generateText } from 'ai'
 import { NextRequest, NextResponse } from 'next/server'
+import { GROQ_MODEL } from '@/lib/ai/groq-model'
 
 export const runtime = 'nodejs'
 
@@ -134,7 +135,7 @@ export async function POST(req: NextRequest) {
     })
 
     const { text } = await generateText({
-      model: groq('llama-3.3-70b-versatile'),
+      model: groq(GROQ_MODEL),
       system: COPILOT_SYSTEM_PROMPT,
       prompt: `CONTEXTO FINANCIERO ACTUAL:
 ${context || 'Sin contexto disponible'}

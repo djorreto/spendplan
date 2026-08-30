@@ -6,6 +6,7 @@
 import { createOpenAI } from '@ai-sdk/openai'
 import { generateText } from 'ai'
 import { NextRequest, NextResponse } from 'next/server'
+import { GROQ_MODEL } from '@/lib/ai/groq-model'
 
 export const runtime = 'nodejs'
 
@@ -70,7 +71,7 @@ Responde SOLO en JSON válido:
 }`
 
     const { text } = await generateText({
-      model: groq('llama-3.3-70b-versatile'),
+      model: groq(GROQ_MODEL),
       system: 'Eres un experto en leer boletas chilenas. Responde únicamente en JSON válido, sin markdown ni explicaciones adicionales.',
       prompt,
       temperature: 0.1, // Muy bajo para respuestas consistentes
