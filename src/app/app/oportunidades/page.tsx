@@ -2,20 +2,38 @@
 
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableFooter,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import { useHousehold } from '@/hooks/use-household'
 import { useSelectedMonth } from '@/hooks/use-selected-month'
 import { useToast } from '@/components/ui/toast'
 import { supabaseBrowser } from '@/lib/supabase'
-import { buildCriticalView, type CriticalView, type OpportunityExpense } from '@/lib/savings-opportunities'
-import { formatCurrency, formatMonth, getMonthDateRange } from '@/lib/utils'
+import {
+  buildCriticalView,
+  expenseDisplayName,
+  expenseGroupName,
+  expenseMerchantKey,
+  type CriticalView,
+  type OpportunityExpense,
+} from '@/lib/savings-opportunities'
+import { cn, formatCurrency, formatDate, formatMonth, getMonthDateRange } from '@/lib/utils'
 import type { SavingsOpportunity } from '@/types'
-import { Lightbulb, ShoppingCart, Tag, TrendingDown } from 'lucide-react'
+import { Lightbulb, ShoppingCart, Tag, TrendingDown, X } from 'lucide-react'
+
+type DrillFocus = { type: 'group' | 'merchant'; key: string; label: string }
 
 function shiftMonth(month: string, delta: number): string {
   const [year, monthNum] = month.split('-').map(Number)
@@ -33,6 +51,8 @@ export default function OportunidadesPage() {
   const { addToast } = useToast()
   const [loading, setLoading] = useState(true)
   const [view, setView] = useState<CriticalView | null>(null)
+  const [focus, setFocus] = useState<DrillFocus | null>(null)
+  const detailRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!currentHousehold) return
@@ -45,7 +65,7 @@ export default function OportunidadesPage() {
       const supabase = supabaseBrowser()
       const { data, error } = await supabase
         .from('expenses')
-        .select('amount, merchant, description, expense_date, category_id, status, ai_adjustment, category:categories!expenses_category_id_fkey(name)')
+        .select('id, amount, merchant, description, expense_date, category_id, status, ai_adjustment, category:categories!expenses_category_id_fkey(name)')
         .eq('household_id', currentHousehold.id)
         .gte('expense_date', start)
         .lt('expense_date', end)
@@ -73,8 +93,36 @@ export default function OportunidadesPage() {
     }
   }, [currentHousehold?.id, selectedMonth, currentHousehold?.settings?.category_groups])
 
+  useEffect(() => {
+    setFocus(null)
+  }, [currentHousehold?.id, selectedMonth])
+
   const currency = currentHousehold?.currency || 'CLP'
   const topLeak = view?.opportunities[0]
+  const customGroups = currentHousehold?.settings?.category_groups
+
+  const detailRows = useMemo(() => {
+    if (!view || !focus) return []
+    const rows =
+      focus.type === 'group'
+        ? view.monthRows.filter((row) => expenseGroupName(row, customGroups) === focus.key)
+        : view.monthRows.filter((row) => expenseMerchantKey(row) === focus.key)
+    return [...rows].sort((a, b) => String(b.expense_date).localeCompare(String(a.expense_date)))
+  }, [view, focus, customGroups])
+
+  const detailTotal = detailRows.reduce((sum, row) => sum + (Number(row.amount) || 0), 0)
+
+  function toggleFocus(next: DrillFocus) {
+    setFocus((current) =>
+      current && current.type === next.type && current.key === next.key ? null : next
+    )
+  }
+
+  useEffect(() => {
+    if (focus) {
+      detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }, [focus])
 
   return (
     <div className="space-y-6 max-w-5xl">
@@ -136,7 +184,7 @@ export default function OportunidadesPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Dónde se va</CardTitle>
-                <CardDescription>Por tipo de gasto, este mes.</CardDescription>
+                <CardDescription>Clic en una barra para ver los gastos de ese tipo.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
                 {view.groups.length === 0 ? (
@@ -148,17 +196,28 @@ export default function OportunidadesPage() {
                     .
                   </p>
                 ) : (
-                  view.groups.map((group) => (
-                    <div key={group.key} className="space-y-1">
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="font-medium">{group.label}</span>
-                        <span className="tabular-nums text-muted-foreground">
-                          {formatCurrency(group.amount, currency)} · {Math.round(group.share * 100)}%
-                        </span>
-                      </div>
-                      <Progress value={Math.min(100, group.share * 100)} />
-                    </div>
-                  ))
+                  view.groups.map((group) => {
+                    const active = focus?.type === 'group' && focus.key === group.key
+                    return (
+                      <button
+                        key={group.key}
+                        type="button"
+                        onClick={() => toggleFocus({ type: 'group', key: group.key, label: group.label })}
+                        className={cn(
+                          'w-full rounded-lg px-2 py-1.5 text-left space-y-1 transition-colors',
+                          active ? 'bg-emerald-50 ring-1 ring-emerald-200' : 'hover:bg-muted/70'
+                        )}
+                      >
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="font-medium">{group.label}</span>
+                          <span className="tabular-nums text-muted-foreground">
+                            {formatCurrency(group.amount, currency)} · {Math.round(group.share * 100)}%
+                          </span>
+                        </div>
+                        <Progress value={Math.min(100, group.share * 100)} />
+                      </button>
+                    )
+                  })
                 )}
               </CardContent>
             </Card>
@@ -166,24 +225,104 @@ export default function OportunidadesPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Comercios que más pesan</CardTitle>
-                <CardDescription>Nombre tal como llegó el cargo.</CardDescription>
+                <CardDescription>Clic en un comercio para ver sus cargos.</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-2">
+              <CardContent className="space-y-1">
                 {view.merchants.length === 0 ? (
                   <p className="text-sm text-muted-foreground">Sin comercios este mes.</p>
                 ) : (
-                  view.merchants.map((merchant) => (
-                    <div key={merchant.key} className="flex items-center justify-between text-sm py-1.5 border-b last:border-0">
-                      <div>
-                        <p className="font-medium">{merchant.label}</p>
-                        <p className="text-xs text-muted-foreground">{merchant.count} cargo{merchant.count === 1 ? '' : 's'}</p>
-                      </div>
-                      <span className="tabular-nums">{formatCurrency(merchant.amount, currency)}</span>
-                    </div>
-                  ))
+                  view.merchants.map((merchant) => {
+                    const active = focus?.type === 'merchant' && focus.key === merchant.key
+                    return (
+                      <button
+                        key={merchant.key}
+                        type="button"
+                        onClick={() =>
+                          toggleFocus({ type: 'merchant', key: merchant.key, label: merchant.label })
+                        }
+                        className={cn(
+                          'flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-sm transition-colors',
+                          active ? 'bg-emerald-50 ring-1 ring-emerald-200' : 'hover:bg-muted/70'
+                        )}
+                      >
+                        <div>
+                          <p className="font-medium">{merchant.label}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {merchant.count} cargo{merchant.count === 1 ? '' : 's'}
+                          </p>
+                        </div>
+                        <span className="tabular-nums">{formatCurrency(merchant.amount, currency)}</span>
+                      </button>
+                    )
+                  })
                 )}
               </CardContent>
             </Card>
+          </div>
+
+          <div ref={detailRef}>
+            {focus ? (
+              <Card>
+                <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
+                  <div>
+                    <CardTitle>Dentro de {focus.label}</CardTitle>
+                    <CardDescription>
+                      {detailRows.length} gasto{detailRows.length === 1 ? '' : 's'} de{' '}
+                      {formatMonth(selectedMonth)}. Clic otra vez en la barra para cerrar.
+                    </CardDescription>
+                  </div>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setFocus(null)}>
+                    <X className="h-4 w-4 mr-1" />
+                    Cerrar
+                  </Button>
+                </CardHeader>
+                <CardContent>
+                  {detailRows.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No hay cargos en este recorte.</p>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Fecha</TableHead>
+                          <TableHead>Comercio</TableHead>
+                          <TableHead>Categoría</TableHead>
+                          <TableHead className="text-right">Monto</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {detailRows.map((row, index) => (
+                          <TableRow key={row.id || `${row.expense_date}-${index}`}>
+                            <TableCell className="whitespace-nowrap">
+                              {formatDate(`${row.expense_date}T12:00:00`)}
+                            </TableCell>
+                            <TableCell>
+                              <p className="font-medium">{expenseDisplayName(row)}</p>
+                              {row.description && row.merchant && row.description !== row.merchant ? (
+                                <p className="text-xs text-muted-foreground">{row.description}</p>
+                              ) : null}
+                            </TableCell>
+                            <TableCell className="text-muted-foreground">
+                              {row.category?.name || row.category_name || 'Sin categoría'}
+                            </TableCell>
+                            <TableCell className="text-right tabular-nums">
+                              {formatCurrency(Number(row.amount) || 0, currency)}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                      <TableFooter>
+                        <TableRow>
+                          <TableCell colSpan={3}>Total</TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {formatCurrency(detailTotal, currency)}
+                          </TableCell>
+                        </TableRow>
+                      </TableFooter>
+                    </Table>
+                  )}
+                </CardContent>
+              </Card>
+            ) : null}
           </div>
 
           <div className="space-y-3">

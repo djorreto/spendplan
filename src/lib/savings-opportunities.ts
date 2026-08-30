@@ -3,6 +3,7 @@ import { settlesFixedPlan } from '@/lib/match-fixed-item'
 import type { SavingsOpportunity } from '@/types'
 
 export type OpportunityExpense = {
+  id?: string
   amount: number
   merchant: string | null
   description: string | null
@@ -29,6 +30,7 @@ export type CriticalView = {
   avgMonthlySpent: number
   groups: SpendSlice[]
   merchants: SpendSlice[]
+  monthRows: OpportunityExpense[]
   opportunities: SavingsOpportunity[]
   totalOpportunity: number
 }
@@ -56,12 +58,23 @@ function categoryNameOf(expense: OpportunityExpense): string | null {
   return expense.category_name || expense.category?.name || null
 }
 
-function displayName(expense: OpportunityExpense): string {
+export function expenseDisplayName(expense: OpportunityExpense): string {
   return (expense.merchant || expense.description || categoryNameOf(expense) || 'Gasto').trim()
 }
 
+export function expenseGroupName(
+  expense: OpportunityExpense,
+  customGroups?: Record<string, string>
+): string {
+  return categoryGroupName(categoryNameOf(expense), customGroups, expense.category_id)
+}
+
+export function expenseMerchantKey(expense: OpportunityExpense): string {
+  return fold(expenseDisplayName(expense))
+}
+
 function clusterOf(expense: OpportunityExpense): { key: string; label: string; kind: ClusterKind } {
-  const name = displayName(expense)
+  const name = expenseDisplayName(expense)
   const category = categoryNameOf(expense) || ''
   const text = fold(`${name} ${category}`)
 
@@ -137,7 +150,7 @@ export function buildCriticalView(
     current.count += 1
     groupMap.set(group, current)
 
-    const shown = displayName(row)
+    const shown = expenseDisplayName(row)
     const merchant = merchantMap.get(fold(shown)) || { label: shown, amount: 0, count: 0 }
     merchant.amount += Number(row.amount) || 0
     merchant.count += 1
@@ -304,6 +317,7 @@ export function buildCriticalView(
     avgMonthlySpent,
     groups,
     merchants,
+    monthRows,
     opportunities: top,
     totalOpportunity: top.reduce((sum, item) => sum + item.monthlySavings, 0),
   }
