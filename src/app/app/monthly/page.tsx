@@ -4,7 +4,7 @@ export const dynamic = 'force-dynamic'
 
 import React, { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -18,6 +18,13 @@ import {
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useHousehold } from '@/hooks/use-household'
 import { useSelectedMonth } from '@/hooks/use-selected-month'
@@ -26,7 +33,30 @@ import { formatCurrency, getCurrentMonth } from '@/lib/utils'
 import { startOp, endOp, formatSupabaseError, withRetry } from '@/lib/debug-log'
 import { useToast } from '@/components/ui/toast'
 import type { BudgetItem, Expense, Category } from '@/types'
+import { categoryGroupName, resolveCategoryParts } from '@/lib/category-taxonomy'
 import { Edit2, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react'
+
+type LineKind = 'income' | 'fixed' | 'variable' | 'unbudgeted' | 'summary'
+
+function lineKindLabel(kind: LineKind) {
+  if (kind === 'income') return 'Ingreso'
+  if (kind === 'fixed') return 'Gasto fijo'
+  if (kind === 'variable') return 'Gasto variable'
+  if (kind === 'unbudgeted') return 'No presupuestado'
+  return 'Resumen'
+}
+
+function describeBudgetLine(item: BudgetItem, categories: Category[]) {
+  if (item.kind === 'income') {
+    return { group: 'Ingresos', subcategory: item.name || 'Ingreso' }
+  }
+  const category = categories.find((c) => c.id === item.category_id)
+  if (category) return resolveCategoryParts(category, categories)
+  return {
+    group: categoryGroupName(item.name),
+    subcategory: item.name || '—',
+  }
+}
 
 type Frequency = 'monthly' | 'weekly' | 'biweekly' | 'yearly' | 'one_time'
 
@@ -121,6 +151,11 @@ export default function MonthlyPage() {
   const [editExpenseMerchant, setEditExpenseMerchant] = useState('')
   const [editExpenseCategory, setEditExpenseCategory] = useState<string>('')
   const [deleteLoadingId, setDeleteLoadingId] = useState<string | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [filterClass, setFilterClass] = useState<'all' | 'income' | 'expense' | 'summary'>('all')
+  const [filterExpenseType, setFilterExpenseType] = useState<'all' | 'fixed' | 'variable' | 'unbudgeted'>('all')
+  const [filterGroup, setFilterGroup] = useState('all')
+  const [filterSub, setFilterSub] = useState('all')
 
   useEffect(() => {
     setTableAnchorMonth(selectedMonth || getCurrentMonth())
@@ -365,6 +400,57 @@ export default function MonthlyPage() {
     return res
   }, [monthlySummary, monthsWindow])
 
+  const lineMeta = useMemo(() => {
+    return budgetItems.map((item) => {
+      const kind: LineKind =
+        item.kind === 'income' ? 'income' : item.type === 'fixed' ? 'fixed' : 'variable'
+      const parts = describeBudgetLine(item, categories)
+      return { item, kind, ...parts }
+    })
+  }, [budgetItems, categories])
+
+  const groupOptions = useMemo(() => {
+    const names = new Set(lineMeta.map((row) => row.group))
+    names.add('Otros')
+    names.add('Ingresos')
+    return [...names].sort((a, b) => a.localeCompare(b, 'es'))
+  }, [lineMeta])
+
+  const subOptions = useMemo(() => {
+    const names = new Set(
+      lineMeta
+        .filter((row) => filterGroup === 'all' || row.group === filterGroup)
+        .map((row) => row.subcategory)
+    )
+    if (filterGroup === 'all' || filterGroup === 'Otros') names.add('No presupuestado')
+    return [...names].sort((a, b) => a.localeCompare(b, 'es'))
+  }, [lineMeta, filterGroup])
+
+  const matchesLine = (kind: LineKind, group: string, subcategory: string, name: string) => {
+    if (filterClass === 'income' && kind !== 'income') return false
+    if (filterClass === 'expense' && kind !== 'fixed' && kind !== 'variable' && kind !== 'unbudgeted') return false
+    if (filterClass === 'summary' && kind !== 'summary') return false
+    if (filterExpenseType !== 'all' && kind !== filterExpenseType) return false
+    if (filterGroup !== 'all' && group !== filterGroup) return false
+    if (filterSub !== 'all' && subcategory !== filterSub) return false
+    const q = searchQuery.trim().toLowerCase()
+    if (!q) return true
+    return (
+      name.toLowerCase().includes(q) ||
+      group.toLowerCase().includes(q) ||
+      subcategory.toLowerCase().includes(q) ||
+      lineKindLabel(kind).toLowerCase().includes(q)
+    )
+  }
+
+  const visibleLines = useMemo(
+    () => lineMeta.filter((row) => matchesLine(row.kind, row.group, row.subcategory, row.item.name || '')),
+    [lineMeta, filterClass, filterExpenseType, filterGroup, filterSub, searchQuery]
+  )
+
+  const showUnbudgeted = matchesLine('unbudgeted', 'Otros', 'No presupuestado', 'No presupuestado')
+  const showSummary = matchesLine('summary', 'Totales', 'Resumen', 'Balance')
+
   const loadData = async () => {
     setLoading(true)
     if (isDemoMode) {
@@ -393,7 +479,7 @@ export default function MonthlyPage() {
         withRetry(
           () => supabase
             .from('categories')
-            .select('id, name, color, is_system, is_active')
+            .select('id, name, color, is_system, is_active, parent_id')
             .or(`household_id.eq.${currentHousehold.id},is_system.eq.true`),
           { retries: 2, baseDelayMs: 200, ctx: op, step: 'select.categories' }
         ),
@@ -466,23 +552,102 @@ export default function MonthlyPage() {
       </div>
 
       <Card>
-        <CardHeader>
-          <CardTitle className="text-base sm:text-lg">Resumen mensual</CardTitle>
-          <CardDescription>
-            Ventana: {monthsWindow[0]} → {monthsWindow[monthsWindow.length - 1]}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="relative max-h-[70vh] overflow-auto">
-          <Table className="min-w-full">
+        <CardContent className="p-3 space-y-3">
+          <div className="flex flex-wrap items-end justify-between gap-2">
+            <div>
+              <p className="text-sm font-medium">Planilla mes a mes</p>
+              <p className="text-xs text-muted-foreground">
+                {monthsWindow[0]} → {monthsWindow[monthsWindow.length - 1]}
+              </p>
+            </div>
+          </div>
+          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-5">
+            <Input
+              placeholder="Filtrar ítem, categoría..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="h-9"
+            />
+            <Select
+              value={filterClass}
+              onValueChange={(value) => {
+                setFilterClass(value as typeof filterClass)
+                setFilterExpenseType('all')
+                setFilterGroup('all')
+                setFilterSub('all')
+              }}
+            >
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder="Tipo" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Ingresos y gastos</SelectItem>
+                <SelectItem value="income">Solo ingresos</SelectItem>
+                <SelectItem value="expense">Solo gastos</SelectItem>
+                <SelectItem value="summary">Solo resumen</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select
+              value={filterExpenseType}
+              onValueChange={(value) => setFilterExpenseType(value as typeof filterExpenseType)}
+              disabled={filterClass === 'income' || filterClass === 'summary'}
+            >
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder="Tipo de gasto" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos los tipos</SelectItem>
+                <SelectItem value="fixed">Gastos fijos</SelectItem>
+                <SelectItem value="variable">Gastos variables</SelectItem>
+                <SelectItem value="unbudgeted">No presupuestados</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select
+              value={filterGroup}
+              onValueChange={(value) => {
+                setFilterGroup(value)
+                setFilterSub('all')
+              }}
+            >
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder="Categoría" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas las categorías</SelectItem>
+                {groupOptions.map((group) => (
+                  <SelectItem key={group} value={group}>{group}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={filterSub} onValueChange={setFilterSub}>
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder="Subcategoría" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas las subcategorías</SelectItem>
+                {subOptions.map((name) => (
+                  <SelectItem key={name} value={name}>{name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="relative max-h-[70vh] overflow-auto p-0">
+          <Table className="min-w-[980px]">
             <TableHeader className="sticky top-0 z-30 bg-background shadow-sm">
-              <TableRow>
-                <TableHead className="min-w-[140px] sm:min-w-[180px] text-xs sm:text-sm sticky top-0 z-40 bg-background">
-                  Ítem
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="h-9 min-w-[120px] px-2 text-xs sticky left-0 z-40 bg-background">
+                  Tipo
                 </TableHead>
+                <TableHead className="h-9 min-w-[120px] px-2 text-xs">Categoría</TableHead>
+                <TableHead className="h-9 min-w-[180px] px-2 text-xs">Ítem</TableHead>
                 {monthsWindow.map((ym) => (
                   <TableHead
                     key={ym}
-                    className="text-right whitespace-nowrap text-xs sm:text-sm sticky top-0 z-40 bg-background"
+                    className="h-9 px-2 text-right whitespace-nowrap text-xs sticky top-0 z-40 bg-background"
                   >
                     {monthShortLabel(ym)}/{ym.slice(2, 4)}
                   </TableHead>
@@ -490,22 +655,27 @@ export default function MonthlyPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {/* Ingresos */}
-              {budgetItems.filter(i => i.kind === 'income').map((item) => (
+              {visibleLines.filter((row) => row.kind === 'income').map(({ item, group, subcategory }) => (
                 <TableRow key={item.id}>
-                  <TableCell className="whitespace-nowrap">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{item.name || 'Ingreso'}</span>
-                      <Badge variant="outline">Ingreso</Badge>
-                      <Button variant="ghost" size="icon" onClick={() => openInlineEdit(item)}>
-                        <Edit2 className="h-4 w-4" />
+                  <TableCell className="px-2 py-1.5 sticky left-0 bg-background">
+                    <Badge variant="outline" className="text-[10px]">Ingreso</Badge>
+                  </TableCell>
+                  <TableCell className="px-2 py-1.5 text-xs">{group}</TableCell>
+                  <TableCell className="px-2 py-1.5">
+                    <div className="flex items-center gap-1">
+                      <span className="font-medium text-sm">{item.name || 'Ingreso'}</span>
+                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openInlineEdit(item)}>
+                        <Edit2 className="h-3.5 w-3.5" />
                       </Button>
                     </div>
+                    {subcategory !== item.name && (
+                      <p className="text-[11px] text-muted-foreground">{subcategory}</p>
+                    )}
                   </TableCell>
                   {monthsWindow.map((ym) => {
                     const active = isItemActiveInMonth(item, ym)
                     return (
-                      <TableCell key={ym} className="text-right text-xs sm:text-sm">
+                      <TableCell key={ym} className="px-2 py-1.5 text-right text-xs tabular-nums">
                         {active ? formatCurrency(getMonthlyAmount(item), currentHousehold?.currency) : '—'}
                       </TableCell>
                     )
@@ -513,22 +683,25 @@ export default function MonthlyPage() {
                 </TableRow>
               ))}
 
-              {/* Fijos */}
-              {budgetItems.filter(i => i.kind === 'expense' && i.type === 'fixed').map((item) => (
+              {visibleLines.filter((row) => row.kind === 'fixed').map(({ item, group, subcategory }) => (
                 <TableRow key={item.id}>
-                  <TableCell className="whitespace-nowrap">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{item.name || 'Gasto fijo'}</span>
-                      <Badge variant="outline">Fijo</Badge>
-                      <Button variant="ghost" size="icon" onClick={() => openInlineEdit(item)}>
-                        <Edit2 className="h-4 w-4" />
+                  <TableCell className="px-2 py-1.5 sticky left-0 bg-background">
+                    <Badge variant="outline" className="text-[10px]">Gasto fijo</Badge>
+                  </TableCell>
+                  <TableCell className="px-2 py-1.5 text-xs">{group}</TableCell>
+                  <TableCell className="px-2 py-1.5">
+                    <div className="flex items-center gap-1">
+                      <span className="font-medium text-sm">{item.name || 'Gasto fijo'}</span>
+                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openInlineEdit(item)}>
+                        <Edit2 className="h-3.5 w-3.5" />
                       </Button>
                     </div>
+                    <p className="text-[11px] text-muted-foreground">{subcategory}</p>
                   </TableCell>
                   {monthsWindow.map((ym) => {
                     const active = isItemActiveInMonth(item, ym)
                     return (
-                      <TableCell key={ym} className="text-right text-xs sm:text-sm">
+                      <TableCell key={ym} className="px-2 py-1.5 text-right text-xs tabular-nums">
                         {active ? formatCurrency(getMonthlyAmount(item), currentHousehold?.currency) : '—'}
                       </TableCell>
                     )
@@ -536,27 +709,30 @@ export default function MonthlyPage() {
                 </TableRow>
               ))}
 
-              {/* Variables */}
-              {budgetItems.filter(i => i.kind === 'expense' && i.type === 'variable').map((item) => (
+              {visibleLines.filter((row) => row.kind === 'variable').map(({ item, group, subcategory }) => (
                 <React.Fragment key={item.id}>
                   <TableRow>
-                    <TableCell className="whitespace-nowrap">
-                      <div className="flex items-center gap-2">
+                    <TableCell className="px-2 py-1.5 sticky left-0 bg-background">
+                      <Badge variant="outline" className="text-[10px]">Gasto variable</Badge>
+                    </TableCell>
+                    <TableCell className="px-2 py-1.5 text-xs">{group}</TableCell>
+                    <TableCell className="px-2 py-1.5">
+                      <div className="flex items-center gap-1">
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-8 w-8"
+                          className="h-7 w-7"
                           onClick={() => toggleExpanded(item.id)}
                           aria-label={expandedVariables.has(item.id) ? 'Ocultar gastos' : 'Ver gastos'}
                         >
                           {expandedVariables.has(item.id) ? '−' : '+'}
                         </Button>
-                        <span className="font-medium">{item.name || 'Gasto variable'}</span>
-                        <Badge variant="outline">Variable</Badge>
-                        <Button variant="ghost" size="icon" onClick={() => openInlineEdit(item)}>
-                          <Edit2 className="h-4 w-4" />
+                        <span className="font-medium text-sm">{item.name || 'Gasto variable'}</span>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openInlineEdit(item)}>
+                          <Edit2 className="h-3.5 w-3.5" />
                         </Button>
                       </div>
+                      <p className="text-[11px] text-muted-foreground">{subcategory}</p>
                     </TableCell>
                     {monthsWindow.map((ym) => {
                       const active = isItemActiveInMonth(item, ym)
@@ -568,7 +744,7 @@ export default function MonthlyPage() {
                             .reduce((sum, e) => sum + (Number(e.amount) || 0), 0)
                         : 0
                       return (
-                        <TableCell key={ym} className="text-right text-xs sm:text-sm">
+                        <TableCell key={ym} className="px-2 py-1.5 text-right text-xs tabular-nums">
                           {active
                             ? `${formatCurrency(spent, currentHousehold?.currency)} / ${formatCurrency(budget, currentHousehold?.currency)}`
                             : '—'}
@@ -578,7 +754,9 @@ export default function MonthlyPage() {
                   </TableRow>
                   {expandedVariables.has(item.id) && (
                     <TableRow key={`${item.id}-details`} className="bg-muted/40">
-                      <TableCell className="text-sm font-medium text-muted-foreground">Gastos reales</TableCell>
+                      <TableCell className="px-2 py-1.5 text-xs text-muted-foreground">Detalle</TableCell>
+                      <TableCell className="px-2 py-1.5 text-xs text-muted-foreground">{group}</TableCell>
+                      <TableCell className="px-2 py-1.5 text-xs text-muted-foreground">Gastos reales</TableCell>
                       {monthsWindow.map((ym) => {
                     const cellExpenses = expenses
                       .filter((e) => {
@@ -637,32 +815,38 @@ export default function MonthlyPage() {
                 </React.Fragment>
               ))}
 
-              {/* No Presupuestados */}
+              {showUnbudgeted && (
               <TableRow>
-                <TableCell className="whitespace-nowrap">
-                  <div className="flex items-center gap-2">
+                <TableCell className="px-2 py-1.5 sticky left-0 bg-background">
+                  <Badge variant="outline" className="text-[10px]">No presupuestado</Badge>
+                </TableCell>
+                <TableCell className="px-2 py-1.5 text-xs">Otros</TableCell>
+                <TableCell className="px-2 py-1.5">
+                  <div className="flex items-center gap-1">
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-8 w-8"
+                      className="h-7 w-7"
                       onClick={() => setExpandedUnbudgeted((v) => !v)}
                       aria-label={expandedUnbudgeted ? 'Ocultar no presupuestados' : 'Ver no presupuestados'}
                     >
                       {expandedUnbudgeted ? '−' : '+'}
                     </Button>
-                    <span className="font-medium text-red-700">No Presup.</span>
-                    <Badge variant="outline">Gastos</Badge>
+                    <span className="font-medium text-sm text-red-700">No presupuestados</span>
                   </div>
                 </TableCell>
                 {monthsWindow.map((ym) => (
-                  <TableCell key={ym} className="text-right text-xs sm:text-sm text-red-700">
+                  <TableCell key={ym} className="px-2 py-1.5 text-right text-xs tabular-nums text-red-700">
                     {monthlySummary[ym] ? formatCurrency(monthlySummary[ym].unbudgeted, currentHousehold?.currency) : '—'}
                   </TableCell>
                 ))}
               </TableRow>
-              {expandedUnbudgeted && (
+              )}
+              {showUnbudgeted && expandedUnbudgeted && (
                 <TableRow className="bg-muted/40">
-                  <TableCell className="text-sm font-medium text-muted-foreground">Gastos reales</TableCell>
+                  <TableCell className="px-2 py-1.5 text-xs text-muted-foreground">Detalle</TableCell>
+                  <TableCell className="px-2 py-1.5 text-xs text-muted-foreground">Otros</TableCell>
+                  <TableCell className="px-2 py-1.5 text-xs text-muted-foreground">Gastos reales</TableCell>
                   {monthsWindow.map((ym) => {
                     const cellExpenses = expenses
                       .filter((e) => {
@@ -719,17 +903,17 @@ export default function MonthlyPage() {
                 </TableRow>
               )}
 
-              {/* Balance planificado */}
+              {showSummary && (
               <TableRow>
-                <TableCell className="whitespace-nowrap">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold">Balance planificado</span>
-                  </div>
+                <TableCell className="px-2 py-1.5 sticky left-0 bg-background">
+                  <Badge variant="secondary" className="text-[10px]">Resumen</Badge>
                 </TableCell>
+                <TableCell className="px-2 py-1.5 text-xs">Totales</TableCell>
+                <TableCell className="px-2 py-1.5 font-semibold text-sm">Balance planificado</TableCell>
                 {monthsWindow.map((ym) => (
                   <TableCell
                     key={ym}
-                    className={`text-right text-xs sm:text-sm ${
+                    className={`px-2 py-1.5 text-right text-xs tabular-nums ${
                       monthlySummary[ym]?.balancePlanned < 0 ? 'text-red-700' : 'text-green-700'
                     }`}
                   >
@@ -737,18 +921,19 @@ export default function MonthlyPage() {
                   </TableCell>
                 ))}
               </TableRow>
+              )}
 
-              {/* Balance real */}
+              {showSummary && (
               <TableRow>
-                <TableCell className="whitespace-nowrap">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold">Balance real</span>
-                  </div>
+                <TableCell className="px-2 py-1.5 sticky left-0 bg-background">
+                  <Badge variant="secondary" className="text-[10px]">Resumen</Badge>
                 </TableCell>
+                <TableCell className="px-2 py-1.5 text-xs">Totales</TableCell>
+                <TableCell className="px-2 py-1.5 font-semibold text-sm">Balance real</TableCell>
                 {monthsWindow.map((ym) => (
                   <TableCell
                     key={ym}
-                    className={`text-right text-xs sm:text-sm ${
+                    className={`px-2 py-1.5 text-right text-xs tabular-nums ${
                       monthlySummary[ym]?.balance < 0 ? 'text-red-700' : 'text-green-700'
                     }`}
                   >
@@ -756,14 +941,15 @@ export default function MonthlyPage() {
                   </TableCell>
                 ))}
               </TableRow>
+              )}
 
-              {/* Ahorro a la fecha */}
+              {showSummary && (
               <TableRow>
-                <TableCell className="whitespace-nowrap">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold">Ahorro a la fecha</span>
-                  </div>
+                <TableCell className="px-2 py-1.5 sticky left-0 bg-background">
+                  <Badge variant="secondary" className="text-[10px]">Resumen</Badge>
                 </TableCell>
+                <TableCell className="px-2 py-1.5 text-xs">Totales</TableCell>
+                <TableCell className="px-2 py-1.5 font-semibold text-sm">Ahorro a la fecha</TableCell>
                 {monthsWindow.map((ym) => {
                   const isFuture = ym > getCurrentMonth()
                   const val = monthlySummary[ym]
@@ -774,34 +960,36 @@ export default function MonthlyPage() {
                   return (
                     <TableCell
                       key={ym}
-                      className={`text-right text-xs sm:text-sm ${val >= 0 ? 'text-green-700' : 'text-red-700'}`}
+                      className={`px-2 py-1.5 text-right text-xs tabular-nums ${val >= 0 ? 'text-green-700' : 'text-red-700'}`}
                     >
                       {monthlySummary[ym] ? formatCurrency(val, currentHousehold?.currency) : '—'}
                     </TableCell>
                   )
                 })}
               </TableRow>
+              )}
 
-              {/* Ahorro acumulado */}
+              {showSummary && (
               <TableRow>
-                <TableCell className="whitespace-nowrap">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold">Ahorro acumulado</span>
-                  </div>
+                <TableCell className="px-2 py-1.5 sticky left-0 bg-background">
+                  <Badge variant="secondary" className="text-[10px]">Resumen</Badge>
                 </TableCell>
+                <TableCell className="px-2 py-1.5 text-xs">Totales</TableCell>
+                <TableCell className="px-2 py-1.5 font-semibold text-sm">Ahorro acumulado</TableCell>
                 {monthsWindow.map((ym) => {
                   const isFuture = ym > getCurrentMonth()
                   const val = cumulativeSavings[ym] ?? 0
                   return (
                     <TableCell
                       key={ym}
-                      className={`text-right text-xs sm:text-sm ${isFuture ? 'text-muted-foreground' : 'text-foreground'}`}
+                      className={`px-2 py-1.5 text-right text-xs tabular-nums ${isFuture ? 'text-muted-foreground' : 'text-foreground'}`}
                     >
                       {formatCurrency(val, currentHousehold?.currency)}
                     </TableCell>
                   )
                 })}
               </TableRow>
+              )}
             </TableBody>
           </Table>
         </CardContent>
