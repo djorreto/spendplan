@@ -31,6 +31,7 @@ import { useSelectedMonth } from '@/hooks/use-selected-month'
 import { useToast } from '@/components/ui/toast'
 import { supabaseBrowser } from '@/lib/supabase'
 import { formatCurrency, formatDate, getCurrentDate, getCategoryColor, getMonthDateRange, paymentMethodLabels } from '@/lib/utils'
+import { buildInstallmentPayloads, installmentLabel, parseCuotaFromText } from '@/lib/installments'
 import {
   originalExpenseDetail,
   originalExpenseText,
@@ -190,7 +191,9 @@ export default function ExpensesPage() {
     notes: '',
     // Installments (cuotas) - only when payment_method is 'credit'
     is_installment: false,
+    installment_index: '1',
     total_installments: '',
+    applyToRemaining: false,
   })
   const [saving, setSaving] = useState(false)
 
@@ -326,7 +329,9 @@ export default function ExpensesPage() {
       category_id: '',
       notes: '',
       is_installment: false,
+      installment_index: '1',
       total_installments: '',
+      applyToRemaining: false,
     })
     setDialogOpen(true)
   }
@@ -341,8 +346,10 @@ export default function ExpensesPage() {
       payment_method: expense.payment_method,
       category_id: expense.category_id || '',
       notes: expense.notes || '',
-      is_installment: false,
-      total_installments: '',
+      is_installment: !!expense.installment_group_id,
+      installment_index: String(expense.installment_index || 1),
+      total_installments: expense.installment_total ? String(expense.installment_total) : '',
+      applyToRemaining: false,
     })
     setDialogOpen(true)
   }
@@ -357,6 +364,13 @@ export default function ExpensesPage() {
     // Validate unbudgeted expense has a name
     if (formData.category_id === 'unbudgeted' && !formData.description?.trim()) {
       addToast({ type: 'error', message: 'Ingresa un nombre para el gasto no presupuestado' })
+      return
+    }
+
+    const totalInstallments = parseInt(formData.total_installments || '1', 10)
+    const startIndex = parseInt(formData.installment_index || '1', 10)
+    if (formData.is_installment && (totalInstallments < 2 || startIndex < 1 || startIndex > totalInstallments)) {
+      addToast({ type: 'error', message: 'Revisa el número de cuotas (esta cuota y el total)' })
       return
     }
 
@@ -389,7 +403,66 @@ export default function ExpensesPage() {
         if (index >= 0) {
           demoExpenses[index] = { ...demoExpenses[index], ...expenseData, updated_at: new Date().toISOString() }
         }
-        addToast({ type: 'success', message: 'Gasto actualizado' })
+        if (
+          formData.is_installment &&
+          totalInstallments > 1 &&
+          !editingExpense.installment_group_id
+        ) {
+          const groupId = `demo-inst-${Date.now()}`
+          if (index >= 0) {
+            demoExpenses[index] = {
+              ...demoExpenses[index],
+              installment_group_id: groupId,
+              installment_index: startIndex,
+              installment_total: totalInstallments,
+              installment_principal: parseFloat(formData.amount) * totalInstallments,
+            }
+          }
+          const rest = buildInstallmentPayloads(
+            { ...demoExpenses[index >= 0 ? index : 0], id: undefined },
+            {
+              startDate: formData.expense_date,
+              startIndex: startIndex + 1,
+              total: totalInstallments,
+              groupId,
+              principal: parseFloat(formData.amount) * totalInstallments,
+            }
+          )
+          demoExpenses.push(
+            ...rest.map((row) => ({
+              ...row,
+              id: `demo-expense-${Date.now()}-${row.installment_index}`,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            }))
+          )
+          addToast({
+            type: 'success',
+            message: `Quedó en cuotas: este mes y ${rest.length} más`,
+          })
+        } else if (
+          formData.applyToRemaining &&
+          editingExpense.installment_group_id &&
+          editingExpense.installment_index
+        ) {
+          demoExpenses.forEach((item, i) => {
+            if (
+              item.installment_group_id === editingExpense.installment_group_id &&
+              (item.installment_index || 0) >= (editingExpense.installment_index || 0)
+            ) {
+              demoExpenses[i] = {
+                ...item,
+                amount: expenseData.amount,
+                category_id: expenseData.category_id,
+                merchant: expenseData.merchant,
+                updated_at: new Date().toISOString(),
+              }
+            }
+          })
+          addToast({ type: 'success', message: 'Cuota actualizada y las que faltan también' })
+        } else {
+          addToast({ type: 'success', message: 'Gasto actualizado' })
+        }
       } else {
         const newExpense: Expense = {
           ...expenseData,
@@ -400,46 +473,28 @@ export default function ExpensesPage() {
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         } as Expense
-        demoExpenses.push(newExpense)
-        
-        // If it's a credit purchase with installments, create fixed expense in budget
-        if (formData.payment_method === 'credit' && formData.is_installment && formData.total_installments) {
-          const totalInstallments = parseInt(formData.total_installments)
-          if (totalInstallments > 1) {
-            const now = new Date().toISOString()
-            const startDate = new Date(formData.expense_date)
-            const endDate = new Date(startDate)
-            endDate.setMonth(endDate.getMonth() + totalInstallments - 1)
-            
-            const itemName = formData.merchant || formData.description || 'Compra en cuotas'
-            const installmentAmount = parseFloat(formData.amount) // Ya es el valor de la cuota
-            
-            const budgetItem: BudgetItem = {
-              id: `item-installment-${Date.now()}`,
-              kind: 'expense',
-              type: 'fixed',
-              name: itemName,
-              amount: installmentAmount,
-              category_id: formData.category_id || undefined,
-              frequency: 'monthly',
-              start_date: formData.expense_date,
-              end_date: endDate.toISOString().split('T')[0],
-              is_indefinite: false,
-              is_active: true,
-              manually_deactivated: false,
-              is_installment: true,
-              total_installments: totalInstallments,
-              notes: formData.notes || `Compra en ${totalInstallments} cuotas`,
-              created_at: now,
-              updated_at: now,
-            }
-            
-            saveDemoBudgetItem(budgetItem)
-            addToast({ type: 'success', message: `Gasto registrado + ${totalInstallments} cuotas agregadas al presupuesto` })
-          } else {
-            addToast({ type: 'success', message: 'Gasto registrado' })
-          }
+        if (formData.is_installment && totalInstallments > 1) {
+          const groupId = `demo-inst-${Date.now()}`
+          const series = buildInstallmentPayloads(newExpense, {
+            startDate: formData.expense_date,
+            startIndex,
+            total: totalInstallments,
+            groupId,
+            principal: parseFloat(formData.amount) * totalInstallments,
+          })
+          demoExpenses.push(
+            ...series.map((row, index) => ({
+              ...row,
+              id: `${newExpense.id}-${row.installment_index}`,
+              created_at: new Date(Date.now() + index).toISOString(),
+            }))
+          )
+          addToast({
+            type: 'success',
+            message: `Quedó en ${series.length} meses (cuota ${startIndex} a ${totalInstallments})`,
+          })
         } else {
+          demoExpenses.push(newExpense)
           addToast({ type: 'success', message: 'Gasto registrado' })
         }
       }
@@ -461,18 +516,101 @@ export default function ExpensesPage() {
 
     try {
       if (editingExpense) {
+        const converting =
+          formData.is_installment &&
+          totalInstallments > 1 &&
+          !editingExpense.installment_group_id
+        const groupId = converting ? crypto.randomUUID() : editingExpense.installment_group_id
         const resp = await withRetry(
           () =>
             supabase
               .from('expenses')
-              .update(expenseData)
+              .update({
+                ...expenseData,
+                ...(converting
+                  ? {
+                      installment_group_id: groupId,
+                      installment_index: startIndex,
+                      installment_total: totalInstallments,
+                      installment_principal: expenseData.amount * totalInstallments,
+                    }
+                  : {}),
+              })
               .eq('id', editingExpense.id)
               .select('id')
               .single(),
           { retries: 2, baseDelayMs: 250, ctx: op, step: 'update.expense' }
         )
         if (resp.error) throw resp.error
-        addToast({ type: 'success', message: 'Gasto actualizado' })
+        if (converting && groupId) {
+          const rest = buildInstallmentPayloads(
+            {
+              ...expenseData,
+              created_by: user.id,
+              source: 'manual',
+              status: 'confirmed',
+            },
+            {
+              startDate: formData.expense_date,
+              startIndex: startIndex + 1,
+              total: totalInstallments,
+              groupId,
+              principal: expenseData.amount * totalInstallments,
+            }
+          )
+          if (rest.length > 0) {
+            const insertRest = await withRetry(
+              () => supabase.from('expenses').insert(rest).select('id'),
+              { retries: 2, baseDelayMs: 250, ctx: op, step: 'insert.remaining-installments' }
+            )
+            if (insertRest.error) throw insertRest.error
+          }
+          addToast({
+            type: 'success',
+            message: `Quedó en cuotas: este mes y ${rest.length} más`,
+          })
+        } else if (
+          formData.applyToRemaining &&
+          editingExpense.installment_group_id &&
+          editingExpense.installment_index
+        ) {
+          const rest = await supabase
+            .from('expenses')
+            .update({ amount: expenseData.amount, category_id: expenseData.category_id, merchant: expenseData.merchant })
+            .eq('household_id', currentHousehold.id)
+            .eq('installment_group_id', editingExpense.installment_group_id)
+            .gte('installment_index', editingExpense.installment_index)
+          if (rest.error) throw rest.error
+          addToast({ type: 'success', message: 'Cuota actualizada y las que faltan también' })
+        } else {
+          addToast({ type: 'success', message: 'Gasto actualizado' })
+        }
+      } else if (formData.is_installment && totalInstallments > 1) {
+        const groupId = crypto.randomUUID()
+        const rows = buildInstallmentPayloads(
+          {
+            ...expenseData,
+            created_by: user.id,
+            source: 'manual',
+            status: 'confirmed',
+          },
+          {
+            startDate: formData.expense_date,
+            startIndex,
+            total: totalInstallments,
+            groupId,
+            principal: expenseData.amount * totalInstallments,
+          }
+        )
+        const resp = await withRetry(
+          () => supabase.from('expenses').insert(rows).select('id'),
+          { retries: 2, baseDelayMs: 250, ctx: op, step: 'insert.installments' }
+        )
+        if (resp.error) throw resp.error
+        addToast({
+          type: 'success',
+          message: `Quedó en ${rows.length} meses (cuota ${startIndex}/${totalInstallments})`,
+        })
       } else {
         const resp = await withRetry(
           () =>
@@ -505,13 +643,32 @@ export default function ExpensesPage() {
     }
   }
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('¿Estás seguro de eliminar este gasto?')) return
+  const handleDelete = async (
+    expense: Expense | string,
+    scope: 'one' | 'remaining' | 'all' = 'one'
+  ) => {
+    const row = typeof expense === 'string' ? expenses.find((item) => item.id === expense) : expense
+    const id = typeof expense === 'string' ? expense : expense.id
+    const confirmMessage =
+      scope === 'all'
+        ? '¿Eliminar toda la compra en cuotas?'
+        : scope === 'remaining'
+          ? '¿Eliminar esta cuota y las que faltan?'
+          : '¿Eliminar este gasto?'
+    if (!confirm(confirmMessage)) return
 
-    // Demo mode: delete from localStorage
     if (checkIsDemoMode()) {
       const demoExpenses = getDemoExpenses()
-      const filtered = demoExpenses.filter(e => e.id !== id)
+      const filtered = demoExpenses.filter((item) => {
+        if (scope === 'all' && row?.installment_group_id) return item.installment_group_id !== row.installment_group_id
+        if (scope === 'remaining' && row?.installment_group_id) {
+          return !(
+            item.installment_group_id === row.installment_group_id &&
+            (item.installment_index || 0) >= (row.installment_index || 0)
+          )
+        }
+        return item.id !== id
+      })
       saveDemoExpenses(filtered)
       addToast({ type: 'success', message: 'Gasto eliminado' })
       loadData()
@@ -519,15 +676,23 @@ export default function ExpensesPage() {
     }
 
     const supabase = supabaseBrowser()
-    const op = startOp('expenses.delete', { id })
+    const op = startOp('expenses.delete', { id, scope })
 
     try {
-      const resp = await withRetry(
-        () => supabase.from('expenses').delete().eq('id', id),
-        { retries: 2, baseDelayMs: 250, ctx: op, step: 'delete.expense' }
-      )
+      let query = supabase.from('expenses').delete()
+      if (scope === 'all' && row?.installment_group_id) {
+        query = query.eq('household_id', currentHousehold!.id).eq('installment_group_id', row.installment_group_id)
+      } else if (scope === 'remaining' && row?.installment_group_id) {
+        query = query
+          .eq('household_id', currentHousehold!.id)
+          .eq('installment_group_id', row.installment_group_id)
+          .gte('installment_index', row.installment_index || 1)
+      } else {
+        query = query.eq('id', id)
+      }
+      const resp = await withRetry(() => query, { retries: 2, baseDelayMs: 250, ctx: op, step: 'delete.expense' })
       if (resp.error) throw resp.error
-      addToast({ type: 'success', message: 'Gasto eliminado' })
+      addToast({ type: 'success', message: scope === 'one' ? 'Gasto eliminado' : 'Cuotas eliminadas' })
       endOp(op, true)
       loadData()
     } catch (error) {
@@ -823,6 +988,11 @@ export default function ExpensesPage() {
                           {detail && (
                             <p className="text-xs text-muted-foreground leading-tight">{detail}</p>
                           )}
+                          {installmentLabel(expense.installment_index, expense.installment_total) ? (
+                            <Badge variant="outline" className="mt-1 text-[10px] border-purple-200 text-purple-800">
+                              {installmentLabel(expense.installment_index, expense.installment_total)}
+                            </Badge>
+                          ) : null}
                           {expense.status === 'pending' && expense.ai_reason && !hasProposedAdjustment(expense) && (
                             <p className="text-xs text-amber-700 dark:text-amber-400 leading-tight mt-0.5">
                               IA: {expense.ai_reason}
@@ -862,13 +1032,39 @@ export default function ExpensesPage() {
                               <Pencil className="mr-2 h-4 w-4" />
                               Editar
                             </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => handleDelete(expense.id)}
-                              className="text-destructive"
-                            >
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              Eliminar
-                            </DropdownMenuItem>
+                            {expense.installment_group_id ? (
+                              <>
+                                <DropdownMenuItem
+                                  onClick={() => handleDelete(expense, 'one')}
+                                  className="text-destructive"
+                                >
+                                  <Trash2 className="mr-2 h-4 w-4" />
+                                  Eliminar esta cuota
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => handleDelete(expense, 'remaining')}
+                                  className="text-destructive"
+                                >
+                                  <Trash2 className="mr-2 h-4 w-4" />
+                                  Eliminar esta y las que faltan
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => handleDelete(expense, 'all')}
+                                  className="text-destructive"
+                                >
+                                  <Trash2 className="mr-2 h-4 w-4" />
+                                  Eliminar toda la compra
+                                </DropdownMenuItem>
+                              </>
+                            ) : (
+                              <DropdownMenuItem
+                                onClick={() => handleDelete(expense, 'one')}
+                                className="text-destructive"
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Eliminar
+                              </DropdownMenuItem>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
@@ -907,7 +1103,9 @@ export default function ExpensesPage() {
           <DialogHeader>
             <DialogTitle>{editingExpense ? 'Editar Gasto' : 'Nuevo Gasto'}</DialogTitle>
             <DialogDescription>
-              {editingExpense ? 'Modifica los datos del gasto' : 'Registra un nuevo gasto rápidamente'}
+              {editingExpense
+                ? 'Modifica los datos del gasto. Si era una compra en cuotas, puedes completar los meses que faltan.'
+                : 'Registra un gasto. Si va en cuotas, se crea uno en cada mes que corresponda.'}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
@@ -1013,8 +1211,6 @@ export default function ExpensesPage() {
                   onValueChange={(v) => setFormData({ 
                     ...formData, 
                     payment_method: v as PaymentMethod,
-                    is_installment: v === 'credit' ? formData.is_installment : false,
-                    total_installments: v === 'credit' ? formData.total_installments : '',
                   })}
                 >
                   <SelectTrigger>
@@ -1048,52 +1244,74 @@ export default function ExpensesPage() {
               </div>
             )}
 
-            {/* Installments Section - Only for Credit */}
-            {formData.payment_method === 'credit' && (
-              <div className="space-y-3 p-3 rounded-lg border border-purple-200 bg-purple-50/50">
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="is_installment"
-                    checked={formData.is_installment}
-                    onChange={(e) => setFormData({ 
-                      ...formData, 
-                      is_installment: e.target.checked,
-                      total_installments: e.target.checked ? '12' : '',
-                    })}
-                    className="h-4 w-4 rounded border-gray-300"
-                  />
-                  <Label htmlFor="is_installment" className="cursor-pointer">
-                    💳 Compra en cuotas
-                  </Label>
-                </div>
-                
-                {formData.is_installment && (
-                  <div className="space-y-3 pl-6">
-                    <div className="space-y-2">
-                      <Label>Número de cuotas</Label>
-                      <Input
-                        type="number"
-                        min="2"
-                        max="60"
-                        placeholder="12"
-                        value={formData.total_installments}
-                        onChange={(e) => setFormData({ 
-                          ...formData, 
-                          total_installments: e.target.value 
-                        })}
-                      />
-                    </div>
-                    {formData.total_installments && parseInt(formData.total_installments) > 1 && formData.amount && parseFloat(formData.amount) > 0 && (
-                      <div className="text-xs text-purple-700 space-y-1 bg-purple-100 p-2 rounded">
-                        <p>💰 Total a pagar: <strong>{formatCurrency(parseFloat(formData.amount) * parseInt(formData.total_installments), currentHousehold?.currency)}</strong></p>
-                        <p>📅 Se agregará al presupuesto como gasto fijo por {formData.total_installments} meses</p>
-                      </div>
-                    )}
-                  </div>
-                )}
+            <div className="space-y-3 p-3 rounded-lg border border-purple-200 bg-purple-50/50">
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="is_installment"
+                  checked={formData.is_installment}
+                  disabled={!!editingExpense?.installment_group_id}
+                  onChange={(e) => setFormData({
+                    ...formData,
+                    is_installment: e.target.checked,
+                    installment_index: e.target.checked ? formData.installment_index || '1' : '1',
+                    total_installments: e.target.checked ? formData.total_installments || '6' : '',
+                  })}
+                  className="h-4 w-4 rounded border-gray-300"
+                />
+                <Label htmlFor="is_installment" className="cursor-pointer">
+                  Compra en cuotas (cae en varios meses)
+                </Label>
               </div>
-            )}
+              {formData.is_installment && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Esta es la cuota</Label>
+                    <Input
+                      type="number"
+                      min="1"
+                      max="60"
+                      value={formData.installment_index}
+                      onChange={(e) => setFormData({ ...formData, installment_index: e.target.value })}
+                      disabled={!!editingExpense?.installment_group_id}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>De un total de</Label>
+                    <Input
+                      type="number"
+                      min="2"
+                      max="60"
+                      value={formData.total_installments}
+                      onChange={(e) => setFormData({ ...formData, total_installments: e.target.value })}
+                      disabled={!!editingExpense?.installment_group_id}
+                    />
+                  </div>
+                  {formData.amount && parseInt(formData.total_installments || '0', 10) > 1 ? (
+                    <p className="sm:col-span-2 text-xs text-purple-800">
+                      El monto de arriba es <strong>cada cuota</strong>. Total:{' '}
+                      <strong>
+                        {formatCurrency(
+                          parseFloat(formData.amount) * parseInt(formData.total_installments, 10),
+                          currentHousehold?.currency
+                        )}
+                      </strong>
+                      . Se crea un gasto en cada mes que corresponda.
+                    </p>
+                  ) : null}
+                  {editingExpense?.installment_group_id ? (
+                    <label className="sm:col-span-2 flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={formData.applyToRemaining}
+                        onChange={(e) => setFormData({ ...formData, applyToRemaining: e.target.checked })}
+                      />
+                      Aplicar el monto también a las cuotas que faltan
+                    </label>
+                  ) : null}
+                </div>
+              )}
+            </div>
 
             <div className="space-y-2">
               <Label htmlFor="notes">Notas</Label>
@@ -1133,7 +1351,7 @@ export default function ExpensesPage() {
                 }
               }
               
-              // Pre-fill form with extracted data
+              const cuota = parseCuotaFromText(`${data.merchant || ''} ${data.description || ''}`)
               setFormData({
                 ...formData,
                 amount: data.amount.toString(),
@@ -1142,8 +1360,9 @@ export default function ExpensesPage() {
                 description: data.description || '',
                 notes: '',
                 payment_method: data.paymentMethod || 'cash',
-                is_installment: false,
-                total_installments: '',
+                is_installment: Boolean(cuota),
+                installment_index: cuota ? String(cuota.index) : '1',
+                total_installments: cuota ? String(cuota.total) : '',
                 category_id: categoryId
               })
               setScannerOpen(false)

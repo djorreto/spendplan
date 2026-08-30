@@ -28,14 +28,20 @@ import { useHousehold } from '@/hooks/use-household'
 import { useAuth } from '@/hooks/use-auth'
 import { useToast } from '@/components/ui/toast'
 import { supabaseBrowser } from '@/lib/supabase'
-import { formatCurrency, formatDate, generateId } from '@/lib/utils'
+import { formatCurrency, generateId } from '@/lib/utils'
+import {
+  addMonthsToDate,
+  planImportMutation,
+  reviewStatementRows,
+  type ReviewAction,
+  type StatementReview,
+} from '@/lib/installments'
 import { endOp, formatSupabaseError, isLikelyDuplicateError, isLikelyRlsOrAuthError, logOp, startOp, withRetry } from '@/lib/debug-log'
 import { 
   Upload,
   FileSpreadsheet,
   ArrowRight,
   Check,
-  AlertCircle,
   X,
   Download
 } from 'lucide-react'
@@ -49,8 +55,6 @@ interface ParsedTransaction {
   date: string
   amount: number
   description: string
-  selected: boolean
-  status: 'new' | 'duplicate' | 'imported'
 }
 
 export default function ImportPage() {
@@ -67,9 +71,10 @@ export default function ImportPage() {
     amount: '',
     description: ''
   })
-  const [transactions, setTransactions] = useState<ParsedTransaction[]>([])
+  const [reviews, setReviews] = useState<StatementReview[]>([])
+  const [analyzing, setAnalyzing] = useState(false)
   const [importing, setImporting] = useState(false)
-  const [importResults, setImportResults] = useState({ imported: 0, skipped: 0 })
+  const [importResults, setImportResults] = useState({ imported: 0, skipped: 0, attached: 0 })
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -124,56 +129,84 @@ export default function ImportPage() {
     addToast({ type: 'success', message: `${data.length} filas cargadas` })
   }
 
-  const processMapping = () => {
+  const processMapping = async () => {
     if (!mapping.date || !mapping.amount) {
       addToast({ type: 'error', message: 'Selecciona al menos fecha y monto' })
       return
     }
+    if (!currentHousehold) return
 
-    const parsed: ParsedTransaction[] = csvData.map(row => {
-      // Parse date
+    const parsed: ParsedTransaction[] = csvData.map((row) => {
       let dateStr = row[mapping.date]
-      // Try to convert various date formats
       const dateMatch = dateStr.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/)
       if (dateMatch) {
         const [, d, m, y] = dateMatch
         const year = y.length === 2 ? '20' + y : y
         dateStr = `${year}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`
       }
-
-      // Parse amount
       let amountStr = row[mapping.amount]
       amountStr = amountStr.replace(/[$\s"]/g, '').replace(/\./g, '').replace(',', '.')
       const amount = Math.abs(parseFloat(amountStr) || 0)
-
       return {
         id: generateId(),
         date: dateStr,
         amount,
         description: row[mapping.description] || '',
-        selected: amount > 0,
-        status: 'new' as const
       }
-    }).filter(t => t.amount > 0)
+    }).filter((t) => t.amount > 0)
 
-    setTransactions(parsed)
+    setAnalyzing(true)
+    const supabase = supabaseBrowser()
+    const from = addMonthsToDate(new Date().toISOString().slice(0, 10), -14)
+    const to = addMonthsToDate(new Date().toISOString().slice(0, 10), 14)
+    const { data, error } = await supabase
+      .from('expenses')
+      .select('id, amount, expense_date, merchant, description, installment_group_id, installment_index, installment_total')
+      .eq('household_id', currentHousehold.id)
+      .neq('status', 'cancelled')
+      .gte('expense_date', from)
+      .lte('expense_date', to)
+      .limit(4000)
+
+    if (error) {
+      addToast({ type: 'error', message: 'Pude leer el CSV pero no los gastos actuales' })
+      setAnalyzing(false)
+      return
+    }
+
+    setReviews(reviewStatementRows(parsed, data || []))
+    setAnalyzing(false)
     setStep('preview')
   }
 
   const toggleTransaction = (id: string) => {
-    setTransactions(prev => prev.map(t => 
-      t.id === id ? { ...t, selected: !t.selected } : t
-    ))
+    setReviews((prev) =>
+      prev.map((item) => (item.row.id === id ? { ...item, selected: !item.selected } : item))
+    )
+  }
+
+  const setAction = (id: string, action: ReviewAction) => {
+    setReviews((prev) =>
+      prev.map((item) =>
+        item.row.id === id
+          ? { ...item, action, selected: action !== 'skip' }
+          : item
+      )
+    )
   }
 
   const toggleAll = (selected: boolean) => {
-    setTransactions(prev => prev.map(t => ({ ...t, selected })))
+    setReviews((prev) =>
+      prev.map((item) =>
+        item.verdict === 'duplicate' ? item : { ...item, selected }
+      )
+    )
   }
 
   const importTransactions = async () => {
     if (!currentHousehold || !user) return
     
-    const selected = transactions.filter(t => t.selected)
+    const selected = reviews.filter((item) => item.selected && item.action !== 'skip')
     if (selected.length === 0) {
       addToast({ type: 'warning', message: 'Selecciona al menos una transacción' })
       return
@@ -183,7 +216,8 @@ export default function ImportPage() {
     const supabase = supabaseBrowser()
     const batchId = generateId()
     let imported = 0
-    let skipped = 0
+    let skipped = reviews.filter((item) => !item.selected || item.action === 'skip').length
+    let attached = 0
     const op = startOp('import.csv', {
       householdId: currentHousehold.id,
       userId: user.id,
@@ -193,12 +227,12 @@ export default function ImportPage() {
 
     try {
       // Insert bank transactions
-      const bankTxData = selected.map(t => ({
+      const bankTxData = selected.map((item) => ({
         household_id: currentHousehold.id,
         import_batch_id: batchId,
-        transaction_date: t.date,
-        amount: t.amount,
-        description: t.description,
+        transaction_date: item.row.date,
+        amount: item.row.amount,
+        description: item.row.description,
         status: 'unreconciled',
         imported_by: user.id
       }))
@@ -230,27 +264,45 @@ export default function ImportPage() {
 
       // Create expenses
       const failures: Array<{ transactionId: string; error: Record<string, unknown> }> = []
-      for (const t of selected) {
+      for (const item of selected) {
+        const t = item.row
+        const base = {
+          household_id: currentHousehold.id,
+          amount: t.amount,
+          description: t.description,
+          merchant: t.description,
+          expense_date: t.date,
+          source: 'csv_import' as const,
+          status: 'confirmed' as const,
+          created_by: user.id,
+        }
+
+        const plan = planImportMutation(item, base)
+        if (plan.update) {
+          const upd = await withRetry(
+            () =>
+              supabase
+                .from('expenses')
+                .update(plan.update!.patch)
+                .eq('id', plan.update!.id)
+                .eq('household_id', currentHousehold.id),
+            { retries: 2, baseDelayMs: 300, ctx: op, step: 'update.installment' }
+          )
+          if (upd.error) throw upd.error
+        }
+        if (plan.attached) attached += 1
+        const rows = plan.rows
+        if (rows.length === 0) {
+          imported += plan.update ? 1 : 0
+          continue
+        }
+
         const expResp = await withRetry(
-          () =>
-            supabase
-              .from('expenses')
-              .insert({
-                household_id: currentHousehold.id,
-                amount: t.amount,
-                description: t.description,
-                expense_date: t.date,
-                source: 'csv_import',
-                status: 'confirmed',
-                created_by: user.id,
-              })
-              .select('id')
-              .single(),
+          () => supabase.from('expenses').insert(rows).select('id'),
           { retries: 2, baseDelayMs: 300, ctx: op, step: 'insert.expense' }
         )
 
         if (expResp.error) {
-          // If it's a unique constraint violation, treat as duplicate/skip.
           if (isLikelyDuplicateError(expResp.error)) {
             skipped++
             logOp(op, 'info', 'duplicate expense skipped', 'insert.expense', {
@@ -264,17 +316,15 @@ export default function ImportPage() {
             transactionId: t.id,
             error: formatSupabaseError(expResp.error),
           })
-
-          // If this looks like RLS/auth, fail fast (no more "silencing").
           if (isLikelyRlsOrAuthError(expResp.error)) {
             throw expResp.error
           }
         } else {
-          imported++
+          imported += rows.length
         }
       }
 
-      setImportResults({ imported, skipped })
+      setImportResults({ imported, skipped, attached })
       setStep('done')
       endOp(op, true, { imported, skipped })
       if (failures.length > 0) {
@@ -300,7 +350,7 @@ export default function ImportPage() {
     setCsvData([])
     setHeaders([])
     setMapping({ date: '', amount: '', description: '' })
-    setTransactions([])
+    setReviews([])
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
@@ -311,7 +361,9 @@ export default function ImportPage() {
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold">Importar Movimientos</h1>
-        <p className="text-muted-foreground">Importa tu cartola bancaria desde un archivo CSV</p>
+        <p className="text-muted-foreground">
+          Importa tu cartola y la comparamos con tus gastos: duplicados, cuotas y meses que faltan.
+        </p>
       </div>
 
       {/* Progress */}
@@ -457,8 +509,8 @@ export default function ImportPage() {
               <X className="mr-2 h-4 w-4" />
               Cancelar
             </Button>
-            <Button onClick={processMapping}>
-              Continuar
+            <Button onClick={() => void processMapping()} disabled={analyzing}>
+              {analyzing ? 'Comparando con tus gastos…' : 'Continuar'}
               <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </CardFooter>
@@ -469,9 +521,10 @@ export default function ImportPage() {
       {step === 'preview' && (
         <Card>
           <CardHeader>
-            <CardTitle>Revisar transacciones</CardTitle>
+            <CardTitle>Revisar contra lo que ya tienes</CardTitle>
             <CardDescription>
-              Selecciona las transacciones que deseas importar
+              Comparé la cartola con tus gastos. Los duplicados vienen destildados.
+              Si es una cuota, puedes cargar solo este mes o la serie que falta.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -485,7 +538,7 @@ export default function ImportPage() {
                 </Button>
               </div>
               <Badge variant="secondary">
-                {transactions.filter(t => t.selected).length} de {transactions.length} seleccionadas
+                {reviews.filter((item) => item.selected).length} de {reviews.length} seleccionadas
               </Badge>
             </div>
 
@@ -496,22 +549,75 @@ export default function ImportPage() {
                     <TableHead className="w-12"></TableHead>
                     <TableHead>Fecha</TableHead>
                     <TableHead>Descripción</TableHead>
+                    <TableHead>Análisis</TableHead>
+                    <TableHead>Acción</TableHead>
                     <TableHead className="text-right">Monto</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {transactions.map((t) => (
-                    <TableRow key={t.id} className={t.selected ? '' : 'opacity-50'}>
+                  {reviews.map((item) => (
+                    <TableRow key={item.row.id} className={item.selected ? '' : 'opacity-50'}>
                       <TableCell>
                         <Checkbox
-                          checked={t.selected}
-                          onCheckedChange={() => toggleTransaction(t.id)}
+                          checked={item.selected}
+                          onCheckedChange={() => toggleTransaction(item.row.id)}
                         />
                       </TableCell>
-                      <TableCell>{t.date}</TableCell>
-                      <TableCell className="max-w-[300px] truncate">{t.description}</TableCell>
-                      <TableCell className="text-right font-medium">
-                        {formatCurrency(t.amount, currentHousehold?.currency)}
+                      <TableCell className="whitespace-nowrap">{item.row.date}</TableCell>
+                      <TableCell className="max-w-[220px]">
+                        <p className="truncate">{item.row.description}</p>
+                        {item.cuota ? (
+                          <p className="text-xs text-purple-700">Cuota {item.cuota.index}/{item.cuota.total}</p>
+                        ) : null}
+                      </TableCell>
+                      <TableCell className="max-w-[280px]">
+                        <Badge
+                          variant={
+                            item.verdict === 'duplicate' || item.verdict === 'maybe_duplicate'
+                              ? 'secondary'
+                              : item.verdict === 'missing_month'
+                                ? 'outline'
+                                : 'default'
+                          }
+                          className="text-[10px] mb-1"
+                        >
+                          {item.verdict === 'duplicate'
+                            ? 'Duplicado'
+                            : item.verdict === 'maybe_duplicate'
+                              ? 'Revisar'
+                              : item.verdict === 'missing_month'
+                                ? 'Falta un mes'
+                                : item.verdict === 'new_installment'
+                                  ? 'Cuotas nuevas'
+                                  : 'Nuevo'}
+                        </Badge>
+                        <p className="text-xs text-muted-foreground leading-snug">{item.reason}</p>
+                      </TableCell>
+                      <TableCell>
+                        <Select
+                          value={item.action}
+                          onValueChange={(value) => setAction(item.row.id, value as ReviewAction)}
+                        >
+                          <SelectTrigger className="h-8 w-[150px] text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="skip">No cargar</SelectItem>
+                            <SelectItem value="one">Solo este cargo</SelectItem>
+                            {item.verdict === 'new_installment' || item.cuota ? (
+                              <SelectItem value="series">Este mes y los que faltan</SelectItem>
+                            ) : null}
+                            {item.match ? (
+                              <SelectItem value="attach">Sumar a la compra ya cargada</SelectItem>
+                            ) : null}
+                            {item.match ? (
+                              <SelectItem value="extend">Ya está: completar meses que faltan</SelectItem>
+                            ) : null}
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell className="text-right font-medium whitespace-nowrap">
+                        {formatCurrency(item.row.amount, currentHousehold?.currency)}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -540,8 +646,9 @@ export default function ImportPage() {
             </div>
             <h2 className="text-2xl font-bold mb-2">¡Importación completada!</h2>
             <p className="text-muted-foreground mb-6">
-              Se importaron {importResults.imported} gastos
-              {importResults.skipped > 0 && ` (${importResults.skipped} omitidos por duplicados)`}
+              Se cargaron {importResults.imported} gastos
+              {importResults.attached > 0 ? ` (${importResults.attached} sumados a compras en cuotas)` : ''}
+              {importResults.skipped > 0 ? ` · ${importResults.skipped} no se cargaron` : ''}
             </p>
             <div className="flex gap-4 justify-center">
               <Button variant="outline" onClick={reset}>

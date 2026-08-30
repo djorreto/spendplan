@@ -178,6 +178,10 @@ export interface Expense extends BaseEntity {
     reason: string
   } | null
   is_unbudgeted?: boolean
+  installment_group_id?: string | null
+  installment_index?: number | null
+  installment_total?: number | null
+  installment_principal?: number | null
   created_by: string | null
   updated_by: string | null
   // Joined
