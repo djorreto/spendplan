@@ -576,7 +576,7 @@ export default function SettingsPage() {
                   Abrir Correos
                 </Link>
                 {' '}
-                para los pasos de Gmail e Itaú.
+                para los pasos de Gmail, Itaú y Santander.
               </p>
             </CardContent>
           </Card>

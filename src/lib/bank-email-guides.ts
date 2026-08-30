@@ -33,6 +33,29 @@ export const BANK_EMAIL_GUIDES: BankEmailGuide[] = [
       'Si en el hogar hay dos Gmail, cada persona hace el filtro en el suyo, con la misma casilla.',
     ],
   },
+  {
+    id: 'santander',
+    name: 'Santander',
+    country: 'Chile',
+    filter: '@santander.cl OR @correo.santander.cl',
+    search: 'from:(@santander.cl OR @correo.santander.cl)',
+    label: 'Santander',
+    senders: [
+      'Cualquier correo que termine en @santander.cl',
+      'Cualquier correo que termine en @correo.santander.cl',
+    ],
+    activateAlerts: [
+      'Abre la app Santander Chile o entra a santander.cl / banco.santander.cl con tu RUT.',
+      'En tus datos de contacto, el correo del banco debe ser el mismo Gmail que usas aquí. Si Santander tiene otro mail, los avisos nunca llegan.',
+      'Activa avisos por correo de compras, transferencias y tarjeta. Suele estar en perfil, seguridad, alertas o notificaciones.',
+      'Si solo te llega la campanita del celular o un SMS y no un mail, SpendPlan no ve el gasto.',
+    ],
+    notes: [
+      'No reenvíes todo Gmail. Solo el filtro de Santander.',
+      'Si el From del aviso es otro subdominio de Santander, ábrelo → mostrar original y súmalo al filtro.',
+      'Si en el hogar hay dos Gmail, cada persona hace el filtro en el suyo, con la misma casilla.',
+    ],
+  },
 ]
 
 export function getBankEmailGuide(id: string): BankEmailGuide | undefined {

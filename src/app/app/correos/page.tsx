@@ -109,8 +109,8 @@ export default function CorreosPage() {
       <div>
         <h1 className="text-3xl font-bold">Correos del banco</h1>
         <p className="text-muted-foreground mt-1">
-          Itaú le escribe a tu Gmail. Gmail le reenvía solo esos avisos a este hogar.
-          SpendPlan los lee y los deja pendientes en Gastos.
+          El banco le escribe a tu Gmail. Gmail le reenvía solo esos avisos a este hogar.
+          SpendPlan los lee y los deja pendientes en Gastos. Puedes armar Itaú y Santander.
         </p>
       </div>
 
@@ -124,7 +124,7 @@ export default function CorreosPage() {
                 {forwarding.gmail_address ? ` de ${forwarding.gmail_address}` : ''}.
               </p>
               <p className="text-green-800 dark:text-green-200 mt-1">
-                Sigue con el filtro de Itaú (paso 3). No actives “reenviar todos los mensajes”.
+                Sigue con el filtro del banco que elijas (abajo). No actives “reenviar todos los mensajes”.
               </p>
             </div>
           </CardContent>
@@ -170,8 +170,8 @@ export default function CorreosPage() {
             <p className="font-medium mt-0.5">{userEmail || 'Cargando…'}</p>
             {!gmailIsGmail && userEmail && (
               <p className="text-sm text-muted-foreground mt-2">
-                El filtro se hace en Gmail. Si Itaú te escribe a otra cuenta, abre ese Gmail
-                o cambia el mail en Itaú a este.
+                El filtro se hace en Gmail. Si el banco te escribe a otra cuenta, abre ese Gmail
+                o cambia el mail en el banco a este.
               </p>
             )}
           </div>
@@ -193,8 +193,8 @@ export default function CorreosPage() {
             </div>
           )}
           <p className="text-sm text-muted-foreground">
-            Si dos personas del hogar reciben Itaú, cada una hace el filtro en su Gmail
-            con <strong>esta misma casilla</strong>.
+            Si dos personas del hogar reciben avisos del banco, cada una hace el filtro en su Gmail
+            con <strong>esta misma casilla</strong>. Puedes crear un filtro por banco.
           </p>
         </CardContent>
       </Card>
@@ -228,7 +228,7 @@ export default function CorreosPage() {
             <li>
               Cuando la dirección quede verificada, <strong>no</strong> actives
               “Reenviar una copia de todos los mensajes”. Eso mandaría todo tu Gmail.
-              El reenvío va solo en el filtro de Itaú, abajo.
+              El reenvío va solo en el filtro del banco, abajo.
             </li>
           </ol>
         </CardContent>
@@ -238,7 +238,7 @@ export default function CorreosPage() {
         <Card className="h-fit">
           <CardHeader className="pb-3">
             <CardTitle className="text-base">Banco</CardTitle>
-            <CardDescription>Empieza por Itaú. Después sumamos los demás.</CardDescription>
+            <CardDescription>Elige el banco y arma su filtro. Repite si usas más de uno.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-1">
             {BANK_EMAIL_GUIDES.map((item) => (
@@ -365,7 +365,7 @@ function BankPanel({
             Si no aparece
           </h3>
           <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
-            <li>¿El aviso está en {userEmail || 'tu Gmail'}? Si no, Itaú tiene otro mail o solo te avisa al celular.</li>
+            <li>¿El aviso está en {userEmail || 'tu Gmail'}? Si no, {bank.name} tiene otro mail o solo te avisa al celular.</li>
             <li>¿Tiene la etiqueta {bank.label}? Si no, el remitente no calza. Abre el mail → mostrar original.</li>
             <li>¿Gmail ya verificó la casilla? Si esta página no dice “Listo”, espera o toca el botón de confirmar.</li>
           </ul>
