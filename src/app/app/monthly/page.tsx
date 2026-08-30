@@ -35,6 +35,7 @@ import { useToast } from '@/components/ui/toast'
 import type { BudgetItem, Expense, Category } from '@/types'
 import { categoryGroupName, resolveCategoryParts } from '@/lib/category-taxonomy'
 import { ExpenseQuickEdit } from '@/components/expenses/expense-quick-edit'
+import { FixedAdjustmentReview, hasProposedAdjustment } from '@/components/expenses/fixed-adjustment-review'
 import { Edit2, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react'
 
 type LineKind = 'income' | 'fixed' | 'variable' | 'unbudgeted' | 'summary'
@@ -501,7 +502,7 @@ export default function MonthlyPage() {
         withRetry(
           () => supabase
             .from('expenses')
-            .select('id, amount, expense_date, category_id, is_unbudgeted, description, merchant, notes')
+            .select('id, amount, expense_date, category_id, is_unbudgeted, description, merchant, notes, status, ai_adjustment, ai_reason')
             .eq('household_id', currentHousehold.id)
             .gte('expense_date', rangeStart)
             .lt('expense_date', rangeEndExclusive)
@@ -825,6 +826,13 @@ export default function MonthlyPage() {
                                       onPatched={applyExpensePatch}
                                       compact
                                     />
+                                    {hasProposedAdjustment(exp) && (
+                                      <FixedAdjustmentReview
+                                        expense={exp}
+                                        onPatched={applyExpensePatch}
+                                        compact
+                                      />
+                                    )}
                                   </div>
                                 ))}
                               </div>
@@ -922,6 +930,13 @@ export default function MonthlyPage() {
                                   onPatched={applyExpensePatch}
                                   compact
                                 />
+                                {hasProposedAdjustment(exp) && (
+                                  <FixedAdjustmentReview
+                                    expense={exp}
+                                    onPatched={applyExpensePatch}
+                                    compact
+                                  />
+                                )}
                               </div>
                             ))}
                           </div>

@@ -4,6 +4,13 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { PaymentMethod } from '@/types'
 import { GROQ_MODEL } from '@/lib/ai/groq-model'
 import {
+  amountCloseEnough,
+  buildFixedAdjustment,
+  matchFixedBudgetItem,
+  type FixedAdjustment,
+  type FixedPlanItem,
+} from '@/lib/match-fixed-item'
+import {
   defaultExpenseDate,
   parseBankEmail,
   type ParsedBankEmail,
@@ -15,7 +22,9 @@ export type AnalyzedBankEmail = ParsedBankEmail & {
   kind: BankEmailKind
   category_id: string | null
   category_name: string | null
+  budget_item_id: string | null
   budget_item_name: string | null
+  adjustment: FixedAdjustment | null
   reason: string
   source: 'groq' | 'rules'
 }
@@ -79,7 +88,9 @@ function rulesFallback(parsed: ParsedBankEmail, reason: string): AnalyzedBankEma
     kind: parsed.amount ? 'unbudgeted' : 'ignore',
     category_id: null,
     category_name: null,
+    budget_item_id: null,
     budget_item_name: null,
+    adjustment: null,
     reason,
     source: 'rules',
   }
@@ -133,6 +144,7 @@ async function loadHouseholdContext(
   const plan = (budgetRes.data || [])
     .filter(isActiveThisMonth)
     .map((item) => ({
+      id: item.id as string,
       name: item.name as string,
       type: item.type as 'fixed' | 'variable',
       amount: Number(item.amount) || 0,
@@ -156,6 +168,7 @@ async function analyzeWithGroq(input: {
   rules: ParsedBankEmail
   categories: Array<{ id: string; name: string }>
   plan: Array<{
+    id: string
     name: string
     type: 'fixed' | 'variable'
     amount: number
@@ -200,7 +213,7 @@ ${JSON.stringify({
 
 PLAN DEL HOGAR ESTE MES (gastos):
 ${input.plan.length ? input.plan.map((item) =>
-  `- ${item.type.toUpperCase()} | ${item.name} | $${item.amount} | categoría: ${item.category_name || 'ninguna'} | category_id: ${item.category_id || 'null'}`
+  `- ${item.type.toUpperCase()} | id:${item.id} | ${item.name} | $${item.amount} | categoría: ${item.category_name || 'ninguna'} | category_id: ${item.category_id || 'null'}`
 ).join('\n') : '(sin ítems)'}
 
 CATEGORÍAS VÁLIDAS (usa solo estos category_id):
@@ -216,14 +229,15 @@ Decide:
    NO es gasto: saldo, cupo, deuda, pago mínimo, confirmación de Gmail/Google, marketing, extracto sin cargo nuevo.
 2. Si es gasto, extrae monto entero CLP (en Chile 12.990 = 12990). No uses saldo ni cupo.
 3. Clasifica contra el plan:
-   - fixed: coincide con un FIJO del plan (nombre/comercio claro o monto ±15%).
-   - variable: encaja en una categoría que tiene presupuesto VARIABLE este mes.
+   - fixed: es UNO de los FIJOS (luz, agua, hipoteca, jardín, rosa, gasto común…). El monto puede variar un poco.
+   - variable: encaja en una categoría VARIABLE de este mes.
    - unbudgeted: es gasto, pero no está en el plan.
    - ignore: no es un gasto a registrar.
-4. category_id solo de la lista. Si no estás seguro, null.
+4. Si kind=fixed, devuelve budget_item_id del FIJO. category_id de ese ítem.
+5. Si el monto del cargo ≠ monto del fijo, igual es fixed: en reason explica el ajuste.
 
 Formato exacto:
-{"is_expense":true,"kind":"variable","amount":12990,"merchant":"Jumbo","description":"Compra Jumbo","expense_date":"2026-08-29","payment_method":"debit","category_id":null,"budget_item_name":null,"confidence":0.0,"reason":"frase corta"}
+{"is_expense":true,"kind":"variable","amount":12990,"merchant":"Jumbo","description":"Compra Jumbo","expense_date":"2026-08-29","payment_method":"debit","category_id":null,"budget_item_id":null,"budget_item_name":null,"confidence":0.0,"reason":"frase corta"}
 `
 
   const { text } = await withTimeout(
@@ -263,7 +277,9 @@ Formato exacto:
       kind: 'ignore',
       category_id: null,
       category_name: null,
+      budget_item_id: null,
       budget_item_name: null,
+      adjustment: null,
       reason: String(parsed.reason || 'No parece un gasto'),
       source: 'groq',
     }
@@ -283,13 +299,67 @@ Formato exacto:
     kind,
     category_id: category?.id || null,
     category_name: category?.name || null,
+    budget_item_id: parsed.budget_item_id ? String(parsed.budget_item_id) : null,
     budget_item_name: parsed.budget_item_name ? String(parsed.budget_item_name) : null,
+    adjustment: null,
     reason: String(parsed.reason || 'Sugerencia Groq'),
     source: 'groq',
   }
 }
 
+function attachFixedAdjustment(
+  analyzed: AnalyzedBankEmail,
+  plan: Array<{
+    id: string
+    name: string
+    type: 'fixed' | 'variable'
+    amount: number
+    category_id: string | null
+    category_name: string | null
+  }>
+): AnalyzedBankEmail {
+  if (!analyzed.amount) return analyzed
+  const fixedItems: FixedPlanItem[] = plan
+    .filter((item) => item.type === 'fixed')
+    .map((item) => ({
+      id: item.id,
+      name: item.name,
+      amount: item.amount,
+      category_id: item.category_id,
+    }))
+
+  const hay = `${analyzed.merchant || ''} ${analyzed.description || ''} ${analyzed.budget_item_name || ''}`
+  const byId = analyzed.budget_item_id
+    ? fixedItems.find((item) => item.id === analyzed.budget_item_id)
+    : null
+  const byName = analyzed.budget_item_name
+    ? fixedItems.find((item) => item.name.toLowerCase() === analyzed.budget_item_name!.toLowerCase())
+    : null
+  const groqItem =
+    byId && amountCloseEnough(byId.amount, analyzed.amount, true)
+      ? byId
+      : byName && amountCloseEnough(byName.amount, analyzed.amount, true)
+        ? byName
+        : null
+  const fuzzy = matchFixedBudgetItem(analyzed.amount, hay, fixedItems)
+  const item = groqItem || fuzzy
+  if (!item) return analyzed
+
+  const planRow = plan.find((row) => row.id === item.id)
+
+  return {
+    ...analyzed,
+    kind: 'fixed',
+    budget_item_id: item.id,
+    budget_item_name: item.name,
+    category_id: analyzed.category_id || item.category_id,
+    category_name: analyzed.category_name || planRow?.category_name || null,
+    adjustment: buildFixedAdjustment(item, analyzed.amount, analyzed.reason),
+  }
+}
+
 export function shouldApplyCategory(analyzed: AnalyzedBankEmail): boolean {
+  if (analyzed.adjustment && analyzed.category_id) return true
   return Boolean(
     analyzed.category_id &&
       analyzed.kind !== 'ignore' &&
@@ -298,6 +368,7 @@ export function shouldApplyCategory(analyzed: AnalyzedBankEmail): boolean {
 }
 
 export function isUnbudgetedKind(analyzed: AnalyzedBankEmail): boolean {
+  if (analyzed.adjustment) return false
   if (analyzed.kind === 'variable' && shouldApplyCategory(analyzed)) return false
   if (analyzed.kind === 'fixed' && shouldApplyCategory(analyzed)) return false
   return true
@@ -321,7 +392,14 @@ export async function analyzeBankEmail(
       ...context,
       today,
     })
-    if (analyzed) return analyzed
+    if (analyzed) return attachFixedAdjustment(analyzed, context.plan)
+    return attachFixedAdjustment(
+      rulesFallback(
+        rules,
+        'Groq no devolvió una lectura clara; revisé el plan de fijos por si el cargo coincide'
+      ),
+      context.plan
+    )
   } catch (error) {
     console.error('analyzeBankEmail Groq failed', error)
   }

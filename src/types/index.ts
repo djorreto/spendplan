@@ -161,6 +161,15 @@ export interface Expense extends BaseEntity {
   ai_category_suggestion: string | null
   ai_confidence: number
   ai_reason: string | null
+  ai_adjustment?: {
+    status: 'proposed' | 'accepted' | 'rejected'
+    budget_item_id: string
+    item_name: string
+    previous_amount: number
+    new_amount: number
+    reason: string
+  } | null
+  is_unbudgeted?: boolean
   created_by: string | null
   updated_by: string | null
   // Joined

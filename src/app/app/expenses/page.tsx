@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, Fragment } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -57,6 +57,7 @@ import {
 } from 'lucide-react'
 import { ReceiptScanner } from '@/components/expenses/receipt-scanner'
 import { ExpenseQuickEdit } from '@/components/expenses/expense-quick-edit'
+import { FixedAdjustmentReview, hasProposedAdjustment } from '@/components/expenses/fixed-adjustment-review'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -623,6 +624,7 @@ export default function ExpensesPage() {
   }, [rows, searchQuery, filterGroup, filterCategory, filterStatus, sortKey, sortDir])
 
   const pendingCount = filteredExpenses.filter((row) => row.expense.status === 'pending').length
+  const proposedFixedCount = filteredExpenses.filter((row) => hasProposedAdjustment(row.expense)).length
 
   const totalFiltered = filteredExpenses
     .filter((row) => row.expense.status === 'confirmed')
@@ -680,6 +682,16 @@ export default function ExpensesPage() {
             {pendingCount === 1
               ? 'Hay 1 gasto pendiente (correo o Telegram). Revisa la sugerencia de IA, corrige si hace falta y confírmalo para que sume al mes.'
               : `Hay ${pendingCount} gastos pendientes (correo o Telegram). Revisa la sugerencia de IA, corrige si hace falta y confírmalos para que sumen al mes.`}
+          </CardContent>
+        </Card>
+      )}
+
+      {proposedFixedCount > 0 && (
+        <Card className="border-sky-200 bg-sky-50 dark:border-sky-900 dark:bg-sky-950/30">
+          <CardContent className="p-4 text-sm">
+            {proposedFixedCount === 1
+              ? 'SpendPlan cree que 1 cargo es un gasto fijo del plan. Revisa el ajuste (el monto puede moverse un poco) y acéptalo o recategoriza si no era ese fijo.'
+              : `SpendPlan cree que ${proposedFixedCount} cargos son gastos fijos del plan. Revisa cada ajuste: el monto puede moverse un poco respecto del presupuesto.`}
           </CardContent>
         </Card>
       )}
@@ -784,9 +796,15 @@ export default function ExpensesPage() {
                 </TableHeader>
                 <TableBody>
                   {filteredExpenses.map(({ expense, category, group, subcategory, original, detail }) => (
+                    <Fragment key={expense.id}>
                     <TableRow
-                      key={expense.id}
-                      className={expense.status === 'pending' ? 'bg-amber-50/70 dark:bg-amber-950/20' : undefined}
+                      className={
+                        hasProposedAdjustment(expense)
+                          ? 'bg-sky-50/70 dark:bg-sky-950/20'
+                          : expense.status === 'pending'
+                            ? 'bg-amber-50/70 dark:bg-amber-950/20'
+                            : undefined
+                      }
                     >
                       <TableCell className="px-2 py-1.5 text-xs text-muted-foreground whitespace-nowrap">
                         {formatDate(expense.expense_date)}
@@ -801,7 +819,7 @@ export default function ExpensesPage() {
                           {detail && (
                             <p className="text-xs text-muted-foreground leading-tight">{detail}</p>
                           )}
-                          {expense.status === 'pending' && expense.ai_reason && (
+                          {expense.status === 'pending' && expense.ai_reason && !hasProposedAdjustment(expense) && (
                             <p className="text-xs text-amber-700 dark:text-amber-400 leading-tight mt-0.5">
                               IA: {expense.ai_reason}
                             </p>
@@ -852,6 +870,14 @@ export default function ExpensesPage() {
                         </DropdownMenu>
                       </TableCell>
                     </TableRow>
+                    {hasProposedAdjustment(expense) && (
+                      <TableRow className="bg-sky-50/40 dark:bg-sky-950/10 hover:bg-sky-50/40">
+                        <TableCell colSpan={7} className="px-2 py-2">
+                          <FixedAdjustmentReview expense={expense} onPatched={applyExpensePatch} />
+                        </TableCell>
+                      </TableRow>
+                    )}
+                    </Fragment>
                   ))}
                 </TableBody>
                 <TableFooter>

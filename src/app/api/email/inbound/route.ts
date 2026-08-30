@@ -206,6 +206,7 @@ export async function POST(req: NextRequest) {
           updated_by: createdBy,
           notes: [`email:${emailId}`, subject ? `asunto:${subject}` : null].filter(Boolean).join('\n'),
           tags: ['email', analyzed.kind],
+          ai_adjustment: analyzed.adjustment,
         })
         .select('id')
         .single()

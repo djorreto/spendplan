@@ -14,6 +14,7 @@ import {
 import { supabaseBrowser } from '@/lib/supabase'
 import { categoryGroupName } from '@/lib/category-taxonomy'
 import { expenseUserComment, withExpenseUserComment } from '@/lib/expense-notes'
+import { isProposedAdjustment } from '@/lib/match-fixed-item'
 import { useAuth } from '@/hooks/use-auth'
 import { useToast } from '@/components/ui/toast'
 
@@ -64,6 +65,7 @@ export function ExpenseQuickEdit({
         category_id: patch.category_id === undefined ? undefined : patch.category_id,
         is_unbudgeted: patch.is_unbudgeted,
         notes: patch.notes,
+        ai_adjustment: patch.ai_adjustment,
         updated_by: user?.id || null,
       })
       .eq('id', expense.id)
@@ -81,10 +83,14 @@ export function ExpenseQuickEdit({
     const categoryId = value === 'unbudgeted' ? null : value
     const category = categoryId ? categories.find((item) => item.id === categoryId) || null : null
     const isUnbudgeted = !categoryId || !budgetedCategoryIds.includes(categoryId)
+    const implicitReject = isProposedAdjustment(expense.ai_adjustment)
+      ? { ...expense.ai_adjustment, status: 'rejected' as const }
+      : undefined
     const ok = await savePatch({
       category_id: categoryId,
       is_unbudgeted: isUnbudgeted,
       category,
+      ...(implicitReject ? { ai_adjustment: implicitReject } : {}),
     })
     if (ok) addToast({ type: 'success', message: 'Categoría actualizada' })
   }

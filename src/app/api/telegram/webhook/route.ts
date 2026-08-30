@@ -11,6 +11,7 @@ import { createClient } from '@supabase/supabase-js'
 import { createOpenAI } from '@ai-sdk/openai'
 import { generateText } from 'ai'
 import { GROQ_MODEL } from '@/lib/ai/groq-model'
+import { buildFixedAdjustment, matchFixedBudgetItem, type FixedPlanItem } from '@/lib/match-fixed-item'
 import { 
   sendTelegramMessage, 
   answerTelegramCallbackQuery,
@@ -598,8 +599,18 @@ async function proposeExpenseForConfirmation(
     amount: parsed.amount,
   })
   const suggestedCategoryId = catSuggestion?.category_id || null
-  const applyCategoryId = catSuggestion && catSuggestion.confidence >= 0.75 ? catSuggestion.category_id : null
-  const categoryLabel = catSuggestion?.category_name || null
+  let applyCategoryId = catSuggestion && catSuggestion.confidence >= 0.75 ? catSuggestion.category_id : null
+  let categoryLabel = catSuggestion?.category_name || null
+  const fixedMatch = await matchHouseholdFixed(
+    link.household_id,
+    parsed.amount,
+    `${parsed.merchant || ''} ${parsed.description || ''} ${text}`,
+    expenseDate
+  )
+  if (fixedMatch) {
+    applyCategoryId = fixedMatch.item.category_id || applyCategoryId
+    categoryLabel = fixedMatch.item.name
+  }
 
   // Create pending expense (confirmed only after user presses button)
   const extraNotes = [parsed.notes].filter(Boolean).join('\n').trim()
@@ -617,9 +628,13 @@ async function proposeExpenseForConfirmation(
       source: 'api',
       status: 'pending',
       category_id: applyCategoryId,
-      ai_category_suggestion: suggestedCategoryId,
-      ai_confidence: catSuggestion?.confidence ?? null,
-      ai_reason: catSuggestion?.reason ?? null,
+      ai_category_suggestion: suggestedCategoryId || fixedMatch?.item.category_id || null,
+      ai_confidence: fixedMatch ? 0.86 : catSuggestion?.confidence ?? null,
+      ai_reason: fixedMatch
+        ? `Fijo · plan: ${fixedMatch.item.name} · ${fixedMatch.adjustment.reason}`
+        : catSuggestion?.reason ?? null,
+      ai_adjustment: fixedMatch?.adjustment || null,
+      is_unbudgeted: !fixedMatch,
       created_by: link.user_id,
       updated_by: link.user_id,
       notes,
@@ -646,10 +661,12 @@ async function proposeExpenseForConfirmation(
     (parsed.notes ? `• Notas: ${parsed.notes}\n` : '') +
     `• Fecha: ${expenseDate}\n` +
     (parsed.payment_method ? `• Pago: ${parsed.payment_method}\n` : '') +
-    (categoryLabel
-      ? `• Categoría sugerida: ${categoryLabel} (${Math.round((catSuggestion?.confidence || 0) * 100)}%)\n`
-      : '') +
-    `\n¿Lo guardo? (puedes tocar una categoría para cambiarla)`
+    (fixedMatch
+      ? `• Parece el fijo *${fixedMatch.item.name}*: presupuesto ${formatMoney(fixedMatch.adjustment.previous_amount)} → cargo ${formatMoney(fixedMatch.adjustment.new_amount)}\n`
+      : categoryLabel
+        ? `• Categoría sugerida: ${categoryLabel} (${Math.round((catSuggestion?.confidence || 0) * 100)}%)\n`
+        : '') +
+    `\n¿Lo guardo? (puedes tocar una categoría para cambiarla). Si no era ese fijo, cámbiala acá o en Gastos.`
 
   await sendTelegramMessage(chatId, preview, {
     reply_markup: buildExpenseInlineKeyboard(expenseId, categories, applyCategoryId, 0),
@@ -758,6 +775,47 @@ function parseDateFromText(text: string): string | null {
     }
   }
   return null
+}
+
+async function matchHouseholdFixed(
+  householdId: string,
+  amount: number,
+  text: string,
+  expenseDate: string
+) {
+  const supabase = getSupabase()
+  const month = expenseDate.slice(0, 7)
+  const start = `${month}-01`
+  const [year, monthNum] = month.split('-').map(Number)
+  const endExclusive = new Date(year, monthNum, 1).toISOString().slice(0, 10)
+
+  const { data } = await supabase
+    .from('budget_items')
+    .select('id, name, amount, category_id, type, kind, is_active, start_date, end_date, is_indefinite')
+    .eq('household_id', householdId)
+    .eq('kind', 'expense')
+    .eq('type', 'fixed')
+
+  const items: FixedPlanItem[] = (data || [])
+    .filter((item) => {
+      if (item.is_active === false) return false
+      if (item.start_date && String(item.start_date) >= endExclusive) return false
+      if (!item.is_indefinite && item.end_date && String(item.end_date) < start) return false
+      return true
+    })
+    .map((item) => ({
+      id: item.id as string,
+      name: item.name as string,
+      amount: Number(item.amount) || 0,
+      category_id: (item.category_id as string | null) || null,
+    }))
+
+  const item = matchFixedBudgetItem(amount, text, items)
+  if (!item) return null
+  return {
+    item,
+    adjustment: buildFixedAdjustment(item, amount, 'Coincide con un fijo del plan (Telegram).'),
+  }
 }
 
 async function suggestCategoryForExpense(
