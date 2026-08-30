@@ -20,6 +20,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { useAuth } from '@/hooks/use-auth'
 import { useHousehold } from '@/hooks/use-household'
 import { useToast } from '@/components/ui/toast'
+import Link from 'next/link'
 import { supabaseBrowser } from '@/lib/supabase'
 import { getInitials } from '@/lib/utils'
 import { generateInboundToken, householdInboundAddress } from '@/lib/inbound-email'
@@ -552,7 +553,8 @@ export default function SettingsPage() {
                     </Button>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    En Gmail: filtro por Itaú → reenviar a esta dirección. Diego y Mari usan la misma. El gasto aparece como Pendiente hasta que lo confirmes.
+                    En Gmail, reenvía solo los avisos del banco a esta dirección. Diego y Mari
+                    usan la misma. El gasto aparece como Pendiente hasta que lo confirmes.
                   </p>
                 </div>
               ) : (
@@ -568,56 +570,13 @@ export default function SettingsPage() {
                 </div>
               )}
 
-              <details className="rounded-lg border bg-muted/20 p-4">
-                <summary className="cursor-pointer text-sm font-medium">
-                  Cómo reenviar todo Itaú desde Gmail
-                </summary>
-                <div className="mt-4 space-y-4 text-sm text-muted-foreground">
-                  <p>
-                    La confirmación de Gmail no llega a tu bandeja: va a Resend.
-                    Casilla: <code className="text-xs bg-muted px-1 rounded">{inboundAddress || 'gastos+codigo@mail.spendplan.cl'}</code>
-                  </p>
-                  <ol className="list-decimal pl-5 space-y-2">
-                    <li>
-                      En la App Itaú o itau.cl, confirma que el email registrado es tu Gmail
-                      y que los avisos de compra/transferencia van por correo, no solo push.
-                    </li>
-                    <li>
-                      Haz una compra chica y verifica que el mail de Itaú llegó a Gmail
-                      (bandeja, Promociones o Spam). Si no llega, SpendPlan no puede verlo.
-                    </li>
-                    <li>
-                      En Gmail (computador): engranaje → Ver toda la configuración →
-                      Reenvío y correo POP/IMAP → Añadir una dirección de reenvío.
-                      Pega la casilla de arriba. No actives “reenviar una copia de todos los mensajes”.
-                    </li>
-                    <li>
-                      Abre resend.com/emails → Receiving. Busca el mail de Google
-                      (“Gmail Forwarding Confirmation”), ábrelo y confirma el enlace o el código.
-                    </li>
-                    <li>
-                      Configuración → Filtros → Crear filtro. En De pega exactamente:
-                      <code className="block mt-1 text-xs bg-muted px-2 py-1 rounded">@itau.cl OR @correo.itau.cl</code>
-                      Deja Para y Asunto vacíos.
-                    </li>
-                    <li>
-                      Crear filtro → marca “Reenviarlo a” esa casilla y aplica la etiqueta Itaú.
-                      No marques Eliminarlo.
-                    </li>
-                    <li>
-                      Si Mari también recibe Itaú, repite 3–6 en su Gmail con la misma casilla.
-                    </li>
-                    <li>
-                      Prueba: el aviso debe tener etiqueta Itaú, aparecer en Resend Receiving,
-                      y en SpendPlan → Gastos como Pendiente. Menú ⋮ → Confirmar.
-                    </li>
-                  </ol>
-                  <p>
-                    La hoja “Reenvio Itaú Gmail” de <em>Costos casa.xlsx</em> tiene el detalle
-                    paso a paso, incluyendo qué hacer si no aparece el gasto.
-                  </p>
-                </div>
-              </details>
+              <p className="text-sm">
+                <Link href="/app/correos" className="underline font-medium">
+                  Abrir Correos
+                </Link>
+                {' '}
+                para configurar Gmail e Itaú, y después otros bancos.
+              </p>
             </CardContent>
           </Card>
 
