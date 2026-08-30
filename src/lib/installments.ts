@@ -1,6 +1,9 @@
+import { classifyCardLine, merchantsMatch } from '@/lib/merchant-aliases'
+
 export type ParsedCuota = {
   index: number
   total: number
+  deferred?: boolean
 }
 
 export type StatementRow = {
@@ -42,20 +45,18 @@ export type StatementReview = {
   group?: ExistingExpenseLite[]
 }
 
-function fold(value: string) {
-  return value
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
-
 export function addMonthsToDate(isoDate: string, delta: number): string {
   const [year, month, day] = isoDate.slice(0, 10).split('-').map(Number)
   const date = new Date(year, month - 1 + delta, Math.min(day || 1, 28))
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+export function parseCuotaPair(index: number, total: number): ParsedCuota | null {
+  if (!Number.isFinite(index) || !Number.isFinite(total) || total < 2 || total > 60) return null
+  if (index === 0) return { index: 0, total, deferred: true }
+  if (index === 1 && total === 1) return null
+  if (index >= 1 && index <= total) return { index, total }
+  return null
 }
 
 export function parseCuotaFromText(text: string): ParsedCuota | null {
@@ -65,6 +66,7 @@ export function parseCuotaFromText(text: string): ParsedCuota | null {
     .replace(/[\u0300-\u036f]/g, '')
   const patterns = [
     /cuota\s*(\d{1,2})\s*(?:de|\/)\s*(\d{1,2})/,
+    /n[oº°]?\s*cuota\s*(\d{1,2})\s*\/\s*(\d{1,2})/,
     /c(?:uota)?\.?\s*(\d{1,2})\s*\/\s*(\d{1,2})/,
     /(\d{1,2})\s*de\s*(\d{1,2})\s*cuotas?/,
     /inst(?:alment|alacion)?\s*(\d{1,2})\s*\/\s*(\d{1,2})/,
@@ -73,11 +75,8 @@ export function parseCuotaFromText(text: string): ParsedCuota | null {
   for (const pattern of patterns) {
     const match = raw.match(pattern)
     if (!match) continue
-    const index = Number(match[1])
-    const total = Number(match[2])
-    if (index >= 1 && total >= 2 && index <= total && total <= 60) {
-      return { index, total }
-    }
+    const parsed = parseCuotaPair(Number(match[1]), Number(match[2]))
+    if (parsed) return parsed
   }
   return null
 }
@@ -86,23 +85,8 @@ export function displayNameOf(row: { merchant?: string | null; description?: str
   return (row.merchant || row.description || '').trim()
 }
 
-function tokens(value: string) {
-  return fold(value)
-    .split(' ')
-    .filter((item) => item.length >= 3 && !['cuota', 'compra', 'pago', 'chile', 'santiago'].includes(item))
-}
-
 function similarName(a: string, b: string): boolean {
-  const left = fold(a)
-  const right = fold(b)
-  if (!left || !right) return false
-  if (left === right) return true
-  if (left.includes(right) || right.includes(left)) return true
-  const aTokens = tokens(a)
-  const bTokens = tokens(b)
-  if (aTokens.length === 0 || bTokens.length === 0) return false
-  const overlap = aTokens.filter((item) => bTokens.includes(item)).length
-  return overlap >= 1 && overlap / Math.min(aTokens.length, bTokens.length) >= 0.5
+  return merchantsMatch(a, b)
 }
 
 export function amountsClose(a: number, b: number): boolean {
@@ -154,8 +138,30 @@ export function buildInstallmentPayloads<T extends Record<string, unknown>>(base
 }
 
 function reviewOneRow(row: StatementRow, existing: ExistingExpenseLite[]): StatementReview {
+    const lineKind = classifyCardLine(`${row.description} ${row.merchant || ''}`)
     const cuota = parseCuotaFromText(`${row.description} ${row.merchant || ''}`)
     const name = displayNameOf(row)
+
+    if (lineKind === 'payment') {
+      return {
+        row,
+        cuota,
+        verdict: 'duplicate',
+        action: 'skip',
+        selected: false,
+        reason: 'Es un pago a la tarjeta, no un gasto. No se carga.',
+      }
+    }
+    if (lineKind === 'refund') {
+      return {
+        row,
+        cuota,
+        verdict: 'maybe_duplicate',
+        action: 'skip',
+        selected: false,
+        reason: 'Es un abono o devolución. Revisa si anula un cargo de esta misma cartola.',
+      }
+    }
 
     const exact = existing.find(
       (item) =>
@@ -225,6 +231,53 @@ function reviewOneRow(row: StatementRow, existing: ExistingExpenseLite[]): State
       }
     }
 
+    const sameMonthHits = existing.filter(
+      (item) => monthOf(item.expense_date) === monthOf(row.date) && amountsClose(item.amount, row.amount)
+    )
+    const namedSameMonth = sameMonthHits.find((item) => similarName(displayNameOf(item), name))
+    if (namedSameMonth) {
+      const related = existing.filter((item) =>
+        namedSameMonth.installment_group_id
+          ? item.installment_group_id === namedSameMonth.installment_group_id
+          : amountsClose(item.amount, row.amount) && similarName(displayNameOf(item), name)
+      )
+      const knownTotal = namedSameMonth.installment_total || cuota?.total || null
+      const lastIndex = Math.max(...related.map((item) => item.installment_index || 1))
+      if (cuota && !cuota.deferred && knownTotal && lastIndex < knownTotal) {
+        return {
+          row,
+          cuota,
+          verdict: 'missing_month' as const,
+          action: 'extend' as const,
+          selected: true,
+          reason: `Este mes ya está en el hogar como “${displayNameOf(namedSameMonth)}”. Completo las cuotas que faltan.`,
+          match: namedSameMonth,
+          group: related,
+        }
+      }
+      return {
+        row,
+        cuota,
+        verdict: 'duplicate' as const,
+        action: 'skip' as const,
+        selected: false,
+        reason: `Ya está este mes: ${displayNameOf(namedSameMonth)} (${namedSameMonth.expense_date.slice(0, 10)}).`,
+        match: namedSameMonth,
+        group: related,
+      }
+    }
+    if (sameMonthHits.length === 1 && !cuota) {
+      return {
+        row,
+        cuota,
+        verdict: 'maybe_duplicate' as const,
+        action: 'skip' as const,
+        selected: false,
+        reason: `Mismo monto en ${monthOf(row.date)} (${displayNameOf(sameMonthHits[0])}). En el Excel del hogar suele ser el mismo cargo.`,
+        match: sameMonthHits[0],
+      }
+    }
+
     const group = existing.filter(
       (item) =>
         item.installment_group_id &&
@@ -275,6 +328,52 @@ function reviewOneRow(row: StatementRow, existing: ExistingExpenseLite[]): State
         reason: `Ya tienes “${displayNameOf(oneOff)}” el ${oneOff.expense_date.slice(0, 10)} como gasto único. Esta cartola es cuota ${cuota.index}/${cuota.total}: súmalo a esa compra.`,
         match: oneOff,
         group: [oneOff],
+      }
+    }
+
+    const nearbyAmount = existing.filter(
+      (item) => amountsClose(item.amount, row.amount) && daysBetween(item.expense_date, row.date) <= 40
+    )
+    if (nearbyAmount.length === 1) {
+      const hit = nearbyAmount[0]
+      const related = existing.filter(
+        (item) =>
+          amountsClose(item.amount, row.amount) && similarName(displayNameOf(item), displayNameOf(hit))
+      )
+      const knownTotal = hit.installment_total || cuota?.total || null
+      const lastIndex = Math.max(...related.map((item) => item.installment_index || 1), 1)
+      if (cuota && !cuota.deferred && knownTotal && lastIndex < knownTotal) {
+        return {
+          row,
+          cuota,
+          verdict: 'missing_month' as const,
+          action: 'extend' as const,
+          selected: true,
+          reason: `Mismo monto que “${displayNameOf(hit)}” (${hit.expense_date.slice(0, 10)}). Completo los meses que faltan y no repito este.`,
+          match: hit,
+          group: related,
+        }
+      }
+      return {
+        row,
+        cuota,
+        verdict: similarName(displayNameOf(hit), name) ? 'duplicate' : 'maybe_duplicate',
+        action: 'skip' as const,
+        selected: false,
+        reason: `Mismo monto cerca de ${hit.expense_date.slice(0, 10)} (${displayNameOf(hit)}). En el Excel del hogar suele ser el mismo cargo.`,
+        match: hit,
+        group: related,
+      }
+    }
+
+    if (cuota?.deferred) {
+      return {
+        row,
+        cuota,
+        verdict: 'new_installment' as const,
+        action: 'series' as const,
+        selected: true,
+        reason: `Cuota 00/${cuota.total}: se compró ahora pero Itaú la cobra desde el mes siguiente. Dejo las ${cuota.total} cuotas desde el próximo mes.`,
       }
     }
 
@@ -417,9 +516,11 @@ export function planImportMutation(item: StatementReview, base: ImportExpenseBas
   if (item.action === 'series' && cuota) {
     const groupId = match?.installment_group_id || crypto.randomUUID()
     const principal = base.amount * cuota.total
+    const startIndex = cuota.deferred ? 1 : Math.max(1, cuota.index)
+    const startDate = cuota.deferred ? addMonthsToDate(item.row.date, 1) : item.row.date
     let update: ImportMutation['update']
     if (match && !match.installment_group_id) {
-      const inferred = Math.max(1, cuota.index - monthsBetween(match.expense_date, item.row.date))
+      const inferred = Math.max(1, startIndex - monthsBetween(match.expense_date, startDate))
       used.add(inferred)
       update = {
         id: match.id,
@@ -432,8 +533,8 @@ export function planImportMutation(item: StatementReview, base: ImportExpenseBas
       }
     }
     const rows = buildInstallmentPayloads(base, {
-      startDate: item.row.date,
-      startIndex: cuota.index,
+      startDate,
+      startIndex,
       total: cuota.total,
       groupId,
       principal,

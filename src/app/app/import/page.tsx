@@ -363,6 +363,7 @@ export default function ImportPage() {
         <h1 className="text-3xl font-bold">Importar Movimientos</h1>
         <p className="text-muted-foreground">
           Importa tu cartola y la comparamos con tus gastos: duplicados, cuotas y meses que faltan.
+          En Itaú, el monto que cuenta es la cuota del mes, no el total de la compra. 01/01 no es cuota; 00/03 se cobra el mes siguiente.
         </p>
       </div>
 
