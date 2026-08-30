@@ -590,8 +590,8 @@ export default function ExpensesPage() {
         <Card className="border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30">
           <CardContent className="p-4 text-sm">
             {pendingCount === 1
-              ? 'Hay 1 gasto pendiente (correo o Telegram). Confírmalo para que sume al mes.'
-              : `Hay ${pendingCount} gastos pendientes (correo o Telegram). Confírmalos para que sumen al mes.`}
+              ? 'Hay 1 gasto pendiente (correo o Telegram). Revisa la sugerencia de IA, corrige si hace falta y confírmalo para que sume al mes.'
+              : `Hay ${pendingCount} gastos pendientes (correo o Telegram). Revisa la sugerencia de IA, corrige si hace falta y confírmalos para que sumen al mes.`}
           </CardContent>
         </Card>
       )}
@@ -686,6 +686,14 @@ export default function ExpensesPage() {
                           </>
                         )}
                       </div>
+                      {expense.status === 'pending' && expense.ai_reason && (
+                        <p className="text-xs text-muted-foreground mt-1 truncate">
+                          IA: {expense.ai_reason}
+                          {expense.ai_confidence
+                            ? ` (${Math.round(Number(expense.ai_confidence) * 100)}%)`
+                            : ''}
+                        </p>
+                      )}
                     </div>
                     <div className="text-right">
                       <p className="font-semibold tabular-nums">

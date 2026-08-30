@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import {
+  analyzeBankEmail,
+  defaultExpenseDate,
+  isUnbudgetedKind,
+  shouldApplyCategory,
+} from '@/lib/ai/analyze-bank-email'
 import { extractEmailAddress, extractInboundToken } from '@/lib/inbound-email'
-import { defaultExpenseDate, htmlToText, parseBankEmail } from '@/lib/parse-bank-email'
+import { htmlToText } from '@/lib/parse-bank-email'
 import { verifyResendWebhook } from '@/lib/resend-webhook'
 
 export const runtime = 'nodejs'
@@ -160,31 +166,46 @@ export async function POST(req: NextRequest) {
 
     const subject = received?.subject || event.data?.subject || null
     const textBody = (received?.text || htmlToText(received?.html) || '').trim()
-    const parsed = parseBankEmail({ subject, text: textBody, html: received?.html })
+    const analyzed = await analyzeBankEmail(supabase, household.id, {
+      subject,
+      text: textBody,
+      html: received?.html,
+    })
     const fromAddress = extractEmailAddress(received?.from || event.data?.from || '')
     const createdBy = await resolveCreatedBy(household.id, fromAddress || null)
 
     let expenseId: string | null = null
-    let status = 'unparsed'
+    let status = analyzed.kind === 'ignore' ? 'ignored' : 'unparsed'
     let error: string | null = null
+    const applyCategory = shouldApplyCategory(analyzed)
 
-    if (parsed.amount) {
+    if (analyzed.kind !== 'ignore' && analyzed.amount) {
       const { data: inserted, error: insertError } = await supabase
         .from('expenses')
         .insert({
           household_id: household.id,
-          amount: parsed.amount,
-          merchant: parsed.merchant,
-          description: parsed.description,
-          expense_date: defaultExpenseDate(parsed),
-          payment_method: parsed.payment_method,
+          amount: analyzed.amount,
+          merchant: analyzed.merchant,
+          description: analyzed.description,
+          expense_date: defaultExpenseDate(analyzed),
+          payment_method: analyzed.payment_method,
           source: 'api',
           status: 'pending',
-          is_unbudgeted: true,
+          is_unbudgeted: isUnbudgetedKind(analyzed),
+          category_id: applyCategory ? analyzed.category_id : null,
+          ai_category_suggestion: analyzed.category_id,
+          ai_confidence: analyzed.confidence,
+          ai_reason: [
+            analyzed.kind === 'fixed' ? 'Fijo' : analyzed.kind === 'variable' ? 'Variable' : 'No presupuestado',
+            analyzed.budget_item_name ? `plan: ${analyzed.budget_item_name}` : null,
+            analyzed.reason,
+          ]
+            .filter(Boolean)
+            .join(' · '),
           created_by: createdBy,
           updated_by: createdBy,
           notes: [`email:${emailId}`, subject ? `asunto:${subject}` : null].filter(Boolean).join('\n'),
-          tags: ['email'],
+          tags: ['email', analyzed.kind],
         })
         .select('id')
         .single()
@@ -206,7 +227,7 @@ export async function POST(req: NextRequest) {
       to_addresses: toAddresses,
       subject,
       text_body: textBody.slice(0, 20_000),
-      parsed,
+      parsed: analyzed,
       expense_id: expenseId,
       status,
       error,

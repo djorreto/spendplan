@@ -120,11 +120,13 @@ export default function CorreosPage() {
             </div>
           )}
           <p className="text-sm text-muted-foreground">
-            Un mail reenviado crea un gasto <strong>Pendiente</strong> en{' '}
+            Groq lee el mail y sugiere si es un <strong>fijo del plan</strong>, un{' '}
+            <strong>variable</strong> o algo <strong>no presupuestado</strong>. Queda{' '}
+            <strong>Pendiente</strong> en{' '}
             <Link href="/app/expenses" className="underline">
               Gastos
             </Link>
-            . Confírmalo para que sume al mes.
+            : tú confirmas, corriges o lo borras.
           </p>
         </CardContent>
       </Card>
