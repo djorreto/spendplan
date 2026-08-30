@@ -13,7 +13,7 @@ import {
   Receipt,
   Tags,
   Upload,
-  Sparkles,
+  Target,
   CalendarRange,
   Mail,
   Settings, 
@@ -56,13 +56,13 @@ export function AppSidebar({
 
   const menuItems: MenuItem[] = [
     { icon: LayoutDashboard, label: 'Resumen', href: '/app/dashboard' },
+    { icon: Target, label: 'Oportunidades', href: '/app/oportunidades' },
     { icon: Wallet, label: 'Presupuesto', href: '/app/budget' },
     { icon: Receipt, label: 'Gastos', href: '/app/expenses' },
     { icon: Mail, label: 'Correos', href: '/app/correos' },
     { icon: CalendarRange, label: 'Mes a mes', href: '/app/monthly' },
     { icon: Tags, label: 'Clasificar', href: '/app/classify' },
     { icon: Upload, label: 'Exportar e importar', href: '/app/export-import' },
-    { icon: Sparkles, label: 'Insights', href: '/app/insights' },
   ]
 
   const bottomItems: MenuItem[] = [

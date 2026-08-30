@@ -49,12 +49,12 @@ type AppTopbarProps = {
 
 const SECTION_LABELS: Array<{ href: string; label: string }> = [
   { href: '/app/dashboard', label: 'Resumen' },
+  { href: '/app/oportunidades', label: 'Oportunidades' },
   { href: '/app/budget', label: 'Presupuesto' },
   { href: '/app/expenses', label: 'Gastos' },
   { href: '/app/correos', label: 'Correos' },
   { href: '/app/classify', label: 'Clasificar' },
   { href: '/app/export-import', label: 'Exportar e importar' },
-  { href: '/app/insights', label: 'Insights' },
   { href: '/app/settings', label: 'Configuración' },
 ]
 

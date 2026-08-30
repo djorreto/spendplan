@@ -325,6 +325,19 @@ export interface InsightsData {
   recommendations: string[]
 }
 
+export type OpportunityKind = 'demand' | 'price'
+
+export interface SavingsOpportunity {
+  id: string
+  kind: OpportunityKind
+  title: string
+  why: string
+  action: string
+  monthlySavings: number
+  confidence: 'alta' | 'media' | 'baja'
+  evidence: string[]
+}
+
 export interface InsightFlag {
   category_id: string
   category_name: string
