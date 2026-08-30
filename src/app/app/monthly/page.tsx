@@ -49,14 +49,18 @@ function lineKindLabel(kind: LineKind) {
   return 'Resumen'
 }
 
-function describeBudgetLine(item: BudgetItem, categories: Category[]) {
+function describeBudgetLine(
+  item: BudgetItem,
+  categories: Category[],
+  customGroups?: Record<string, string>
+) {
   if (item.kind === 'income') {
     return { group: 'Ingresos', subcategory: item.name || 'Ingreso' }
   }
   const category = categories.find((c) => c.id === item.category_id)
-  if (category) return resolveCategoryParts(category, categories)
+  if (category) return resolveCategoryParts(category, categories, customGroups)
   return {
-    group: categoryGroupName(item.name),
+    group: categoryGroupName(item.name, customGroups),
     subcategory: item.name || '—',
   }
 }
@@ -408,10 +412,10 @@ export default function MonthlyPage() {
     return budgetItems.map((item) => {
       const kind: LineKind =
         item.kind === 'income' ? 'income' : item.type === 'fixed' ? 'fixed' : 'variable'
-      const parts = describeBudgetLine(item, categories)
+      const parts = describeBudgetLine(item, categories, currentHousehold?.settings?.category_groups)
       return { item, kind, ...parts }
     })
-  }, [budgetItems, categories])
+  }, [budgetItems, categories, currentHousehold?.settings?.category_groups])
 
   const groupOptions = useMemo(() => {
     const names = new Set(lineMeta.map((row) => row.group))
@@ -464,6 +468,10 @@ export default function MonthlyPage() {
           : item
       )
     )
+  }
+
+  const handleCategoryCreated = (category: Category) => {
+    setCategories((prev) => (prev.some((item) => item.id === category.id) ? prev : [...prev, category]))
   }
 
   const showUnbudgeted = matchesLine('unbudgeted', 'Otros', 'No presupuestado', 'No presupuestado')
@@ -827,6 +835,7 @@ export default function MonthlyPage() {
                                       categories={categories}
                                       budgetedCategoryIds={[...variableCategoryIds]}
                                       onPatched={applyExpensePatch}
+                                      onCategoryCreated={handleCategoryCreated}
                                       compact
                                     />
                                     {hasProposedAdjustment(exp) && (
@@ -932,6 +941,7 @@ export default function MonthlyPage() {
                                   categories={categories}
                                   budgetedCategoryIds={[...variableCategoryIds]}
                                   onPatched={applyExpensePatch}
+                                  onCategoryCreated={handleCategoryCreated}
                                   compact
                                 />
                                 {hasProposedAdjustment(exp) && (

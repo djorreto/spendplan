@@ -331,6 +331,11 @@ export default function ClassifyPage() {
                         category_id: selectedCategoryId || expense.category_id,
                       }}
                       categories={categories}
+                      onCategoryCreated={(category) => {
+                        setCategories((prev) =>
+                          prev.some((item) => item.id === category.id) ? prev : [...prev, category]
+                        )
+                      }}
                       onPatched={(id, patch) => {
                         if (patch.category_id) {
                           setUnclassified((prev) => prev.filter((item) => item.id !== id))

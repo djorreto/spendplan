@@ -73,6 +73,7 @@ export interface HouseholdSettings {
     confirmation_code?: string | null
     gmail_address?: string | null
   }
+  category_groups?: Record<string, string>
 }
 
 // ========================================

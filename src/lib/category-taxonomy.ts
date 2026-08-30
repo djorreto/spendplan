@@ -1,5 +1,20 @@
 import type { Category, Expense } from '@/types'
 
+export const CATEGORY_GROUPS = [
+  'Alimentación',
+  'Transporte',
+  'Vivienda',
+  'Servicios',
+  'Salud',
+  'Familia',
+  'Ocio',
+  'Digital',
+  'Finanzas',
+  'Otros',
+] as const
+
+export type CategoryGroup = (typeof CATEGORY_GROUPS)[number]
+
 const GROUP_BY_NAME: Record<string, string> = {
   supermercado: 'Alimentación',
   restaurantes: 'Alimentación',
@@ -26,28 +41,46 @@ const GROUP_BY_NAME: Record<string, string> = {
   'sin clasificar': 'Otros',
 }
 
-export function categoryGroupName(categoryName: string | null | undefined): string {
+export function categoryGroupName(
+  categoryName: string | null | undefined,
+  customGroups?: Record<string, string>,
+  categoryId?: string | null
+): string {
+  if (categoryId && customGroups?.[categoryId]) return customGroups[categoryId]
   if (!categoryName) return 'Sin categoría'
   const key = categoryName.trim().toLowerCase()
+  if (customGroups?.[key]) return customGroups[key]
   return GROUP_BY_NAME[key] || 'Otros'
 }
 
 export function resolveCategoryParts(
   category: Category | null | undefined,
-  all: Category[]
+  all: Category[],
+  customGroups?: Record<string, string>
 ): { group: string; subcategory: string } {
   if (!category) return { group: 'Sin categoría', subcategory: '—' }
   if (category.parent_id) {
     const parent = all.find((item) => item.id === category.parent_id)
     return {
-      group: parent?.name || categoryGroupName(category.name),
+      group: parent?.name || categoryGroupName(category.name, customGroups, category.id),
       subcategory: category.name,
     }
   }
   return {
-    group: categoryGroupName(category.name),
+    group: categoryGroupName(category.name, customGroups, category.id),
     subcategory: category.name,
   }
+}
+
+export function categoriesInGroup(
+  categories: Category[],
+  group: string,
+  customGroups?: Record<string, string>
+): Category[] {
+  return categories
+    .filter((item) => item.name !== 'Sin clasificar')
+    .filter((item) => categoryGroupName(item.name, customGroups, item.id) === group)
+    .sort((a, b) => a.name.localeCompare(b.name, 'es'))
 }
 
 export function originalExpenseText(expense: Pick<Expense, 'merchant' | 'description' | 'notes'>): string {

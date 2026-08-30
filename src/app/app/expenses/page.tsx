@@ -566,7 +566,7 @@ export default function ExpensesPage() {
       .filter((expense) => expense.status !== 'cancelled')
       .map((expense) => {
         const category = (expense.category as Category | undefined) || categories.find((c) => c.id === expense.category_id)
-        const parts = resolveCategoryParts(category, categories)
+        const parts = resolveCategoryParts(category, categories, currentHousehold?.settings?.category_groups)
         return {
           expense,
           category,
@@ -576,7 +576,7 @@ export default function ExpensesPage() {
           detail: originalExpenseDetail(expense),
         }
       })
-  }, [expenses, categories])
+  }, [expenses, categories, currentHousehold?.settings?.category_groups])
 
   const groupOptions = useMemo(
     () => [...new Set(rows.map((row) => row.group))].sort((a, b) => a.localeCompare(b, 'es')),
@@ -642,6 +642,10 @@ export default function ExpensesPage() {
           : item
       )
     )
+  }
+
+  const handleCategoryCreated = (category: Category) => {
+    setCategories((prev) => (prev.some((item) => item.id === category.id) ? prev : [...prev, category]))
   }
 
   const toggleSort = (key: typeof sortKey) => {
@@ -795,7 +799,7 @@ export default function ExpensesPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredExpenses.map(({ expense, category, group, subcategory, original, detail }) => (
+                  {filteredExpenses.map(({ expense, original, detail }) => (
                     <Fragment key={expense.id}>
                     <TableRow
                       className={
@@ -826,15 +830,14 @@ export default function ExpensesPage() {
                           )}
                         </button>
                       </TableCell>
-                      <TableCell className="px-2 py-1.5 text-sm">{group}</TableCell>
-                      <TableCell className="px-2 py-1.5" colSpan={2}>
-                        <ExpenseQuickEdit
-                          expense={expense}
-                          categories={categories}
-                          budgetedCategoryIds={budgetedCategoryIds}
-                          onPatched={applyExpensePatch}
-                        />
-                      </TableCell>
+                      <ExpenseQuickEdit
+                        expense={expense}
+                        categories={categories}
+                        budgetedCategoryIds={budgetedCategoryIds}
+                        onPatched={applyExpensePatch}
+                        onCategoryCreated={handleCategoryCreated}
+                        layout="table"
+                      />
                       <TableCell className="px-2 py-1.5 text-right tabular-nums font-medium whitespace-nowrap">
                         <div>{formatCurrency(expense.amount, currentHousehold?.currency)}</div>
                         {expense.status === 'pending' && (
